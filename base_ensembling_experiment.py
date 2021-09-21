@@ -41,7 +41,7 @@ def ens_exp():
         if not os.path.exists(vt_out_path):
             os.mkdir(vt_out_path)
 
-        train_outputs, train_labels, val_outputs, val_labels, test_outputs, test_labels = \
+        train_outputs, train_labels, val_outputs, val_labels, test_outputs, test_labels, networks = \
             load_networks_outputs(nn_outputs_path, comb_out_path, args.device)
 
         _, lda_train_idx = train_test_split(np.arange(train_labels.shape[0]), test_size=val_labels.shape[0],

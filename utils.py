@@ -42,7 +42,7 @@ def load_networks_outputs(nn_outputs_path, experiment_out_path, device):
     val_outputs = torch.cat(val_outputs, 0)
     val_labels = load_npy_arr(os.path.join(nn_outputs_path, networks[0], 'val_labels.npy'), device)
 
-    return train_outputs, train_labels, val_outputs, val_labels, test_outputs, test_labels
+    return train_outputs, train_labels, val_outputs, val_labels, test_outputs, test_labels, networks
 
 
 def ens_train_save(predictors, targets, test_predictors, device, out_path, prefix=''):

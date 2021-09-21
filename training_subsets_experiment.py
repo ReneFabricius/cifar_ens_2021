@@ -12,7 +12,7 @@ import torch
 
 from utils import load_networks_outputs, load_npy_arr, ens_train_save
 
-TRAIN_OUTPUTS_FOLDER = 'subsets_train_outputs'
+TRAIN_OUTPUTS_FOLDER = 'exp_subsets_train_outputs'
 
 
 def ens_train_exp():
@@ -30,8 +30,15 @@ def ens_train_exp():
         os.mkdir(exper_outputs_path)
 
     print("Loading networks outputs")
-    train_outputs, train_labels, val_outputs, val_labels, test_outputs, test_labels = \
+    train_outputs, train_labels, val_outputs, val_labels, test_outputs, test_labels, networks = \
         load_networks_outputs(networks_outputs_folder, exper_outputs_path, args.device)
+
+    df_net = pd.DataFrame(columns=("network", "accuracy"))
+    for i, net in enumerate(networks):
+        acc = compute_acc_topk(test_labels, test_outputs[i], 1)
+        df_net.loc[i] = [net, acc]
+
+    df_net.to_csv(os.path.join(exper_outputs_path, "net_accuracies.csv"), index=False)
 
     n_samples = train_labels.shape[0]
     n_folds = n_samples // args.train_size
