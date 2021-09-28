@@ -6,7 +6,7 @@ import torch
 
 sys.path.append('D:\\skola\\1\\weighted_ensembles')
 from my_codes.weighted_ensembles.WeightedLDAEnsemble import WeightedLDAEnsemble
-from my_codes.weighted_ensembles.SimplePWCombine import m1, m2, bc
+from my_codes.weighted_ensembles.SimplePWCombine import m1, m2, bc, m2_iter
 
 
 def load_npy_arr(file, device):
@@ -45,21 +45,21 @@ def load_networks_outputs(nn_outputs_path, experiment_out_path, device):
     return train_outputs, train_labels, val_outputs, val_labels, test_outputs, test_labels, networks
 
 
-def ens_train_save(predictors, targets, test_predictors, device, out_path, prefix=''):
-    ens = WeightedLDAEnsemble(predictors.shape[0], predictors.shape[2], device)
+def ens_train_save(predictors, targets, test_predictors, device, out_path, pwc_methods,
+                   double_accuracy=False, prefix=''):
+    dtp = torch.float64 if double_accuracy else torch.float32
+    ens = WeightedLDAEnsemble(predictors.shape[0], predictors.shape[2], device, dtp=dtp)
     ens.fit_penultimate(predictors, targets, verbose=True, test_normality=True)
 
-    ens.save_coefs_csv(os.path.join(out_path, prefix + 'lda_coefs.csv'))
-    ens.save_pvals(os.path.join(out_path, prefix + 'p_values.npy'))
-    ens.save(os.path.join(out_path, prefix + 'model'))
+    ens.save_coefs_csv(os.path.join(out_path, prefix + 'lda_coefs_{}.csv'.format("double" if double_accuracy else "float")))
+    ens.save_pvals(os.path.join(out_path, prefix + 'p_values_{}.npy'.format("double" if double_accuracy else "float")))
+    ens.save(os.path.join(out_path, prefix + 'model_{}'.format("double" if double_accuracy else "float")))
 
-    ens_test_out_m1 = ens.predict_proba(test_predictors, m1)
-    np.save(os.path.join(out_path, prefix + 'ens_test_outputs_m1.npy'), ens_test_out_m1.detach().cpu().clone().numpy())
+    ens_test_results = []
+    for pwc_method in pwc_methods:
+        ens_test_out_method = ens.predict_proba(test_predictors, pwc_method)
+        ens_test_results.append(ens_test_out_method)
+        np.save(os.path.join(out_path, prefix + '_ens_test_outputs_' + pwc_method.__name__ + ".npy"),
+                ens_test_out_method.detach().cpu().numpy())
 
-    ens_test_out_m2 = ens.predict_proba(test_predictors, m2)
-    np.save(os.path.join(out_path, prefix + 'ens_test_outputs_m2.npy'), ens_test_out_m2.detach().cpu().clone().numpy())
-
-    ens_test_out_bc = ens.predict_proba(test_predictors, bc)
-    np.save(os.path.join(out_path, prefix + 'ens_test_outputs_bc.npy'), ens_test_out_bc.detach().cpu().clone().numpy())
-
-    return ens_test_out_m1, ens_test_out_m2, ens_test_out_bc
+    return ens_test_results

@@ -6,7 +6,8 @@ import pandas as pd
 from sklearn.model_selection import StratifiedKFold
 
 sys.path.append('D:\\skola\\1\\weighted_ensembles')
-from my_codes.weighted_ensembles.predictions_evaluation import compute_acc_topk
+from my_codes.weighted_ensembles.predictions_evaluation import compute_acc_topk, compute_nll
+from my_codes.weighted_ensembles.SimplePWCombine import m1, m2, bc, m2_iter
 
 import torch
 
@@ -16,6 +17,8 @@ EXP_OUTPUTS_FOLDER = 'exp_subsets_sizes_train_outputs'
 
 
 def ens_train_exp():
+    pwc_methods = [m1, m2, m2_iter, bc]
+
     parser = argparse.ArgumentParser()
     parser.add_argument('-folder', type=str, required=True, help='replication_folder')
     parser.add_argument('-repl_num', type=int, default=30, help='max number of replications for each train size')
@@ -39,7 +42,7 @@ def ens_train_exp():
 
     df_net.to_csv(os.path.join(exper_outputs_path, "net_accuracies.csv"), index=False)
 
-    df = pd.DataFrame(columns=("method", "train_size", "accuracy"))
+    df = pd.DataFrame(columns=("method", "train_size", "accuracy", "nll"))
     df_i = 0
 
     n_samples = train_labels.shape[0]
@@ -67,20 +70,15 @@ def ens_train_exp():
             lda_train_idxs = torch.from_numpy(lda_train_idxs).to(device=torch.device(args.device), dtype=torch.long)
             lda_train_pred = train_outputs[:, lda_train_idxs, :]
             lda_train_lab = train_labels[lda_train_idxs]
-            test_ens_m1, test_ens_m2, test_ens_bc = ens_train_save(lda_train_pred, lda_train_lab, test_outputs,
-                                                                   torch.device(args.device), exper_outputs_path,
-                                                                   "size_{}_repl_{}_".format(real_t_size, fold_i))
+            test_ens_results = ens_train_save(lda_train_pred, lda_train_lab, test_outputs,
+                                                torch.device(args.device), exper_outputs_path,
+                                                pwc_methods, "size_{}_repl_{}_".format(real_t_size, fold_i))
 
-            acc_m1 = compute_acc_topk(test_labels, test_ens_m1, 1)
-            acc_m2 = compute_acc_topk(test_labels, test_ens_m2, 1)
-            acc_bc = compute_acc_topk(test_labels, test_ens_bc, 1)
-
-            df.loc[df_i] = ["m1", real_t_size, acc_m1]
-            df_i += 1
-            df.loc[df_i] = ["m2", real_t_size, acc_m2]
-            df_i += 1
-            df.loc[df_i] = ["bc", real_t_size, acc_bc]
-            df_i += 1
+            for mi, test_ens_res in enumerate(test_ens_results):
+                acc_method = compute_acc_topk(test_labels, test_ens_res, 1)
+                nll_method = compute_nll(test_labels, test_ens_res)
+                df.loc[df_i] = [pwc_methods[mi].__name__, real_t_size, acc_method, nll_method]
+                df_i += 1
 
         cur_t_size = int(quot * cur_t_size)
 

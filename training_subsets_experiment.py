@@ -6,7 +6,8 @@ import pandas as pd
 from sklearn.model_selection import StratifiedKFold
 
 sys.path.append('D:\\skola\\1\\weighted_ensembles')
-from my_codes.weighted_ensembles.predictions_evaluation import compute_acc_topk
+from my_codes.weighted_ensembles.predictions_evaluation import compute_acc_topk, compute_nll
+from my_codes.weighted_ensembles.SimplePWCombine import m1, m2, bc, m2_iter
 
 import torch
 
@@ -16,6 +17,8 @@ TRAIN_OUTPUTS_FOLDER = 'exp_subsets_train_outputs'
 
 
 def ens_train_exp():
+    pwc_methods = [m1, m2, m2_iter, bc]
+
     parser = argparse.ArgumentParser()
     parser.add_argument('-folder', type=str, required=True, help='replication_folder')
     parser.add_argument('-train_size', type=int, default=500, help='size of lda training set')
@@ -43,7 +46,8 @@ def ens_train_exp():
     n_samples = train_labels.shape[0]
     n_folds = n_samples // args.train_size
     skf = StratifiedKFold(n_splits=n_folds, shuffle=True)
-    df = pd.DataFrame(columns=('m1_acc', 'm2_acc', 'bc_acc'))
+    df = pd.DataFrame(columns=("method", "accuracy", "nll"))
+    df_i = 0
 
     for fold_i, (_, lda_train_idxs) in enumerate(skf.split(np.zeros(n_samples),
                                                            train_labels.detach().cpu().clone().numpy())):
@@ -52,15 +56,19 @@ def ens_train_exp():
         lda_train_idxs = torch.from_numpy(lda_train_idxs).to(device=torch.device(args.device), dtype=torch.long)
         lda_train_pred = train_outputs[:, lda_train_idxs, :]
         lda_train_lab = train_labels[lda_train_idxs]
-        test_ens_m1, test_ens_m2, test_ens_bc = ens_train_save(lda_train_pred, lda_train_lab, test_outputs,
-                                                               torch.device(args.device), exper_outputs_path,
-                                                               str(fold_i) + "_")
 
-        acc_m1 = compute_acc_topk(test_labels, test_ens_m1, 1)
-        acc_m2 = compute_acc_topk(test_labels, test_ens_m2, 1)
-        acc_bc = compute_acc_topk(test_labels, test_ens_bc, 1)
+        data_type = ["float", "double"]
+        for dtype in data_type:
+            test_ens_results = ens_train_save(lda_train_pred, lda_train_lab, test_outputs,
+                                                torch.device(args.device), exper_outputs_path,
+                                                pwc_methods, prefix=(str(fold_i) + "_"),
+                                              double_accuracy=(dtype == "double"))
 
-        df.loc[fold_i] = [acc_m1, acc_m2, acc_bc]
+            for mi, test_ens_method_res in enumerate(test_ens_results):
+                acc_method = compute_acc_topk(test_labels, test_ens_method_res, 1)
+                nll_method = compute_nll(test_labels, test_ens_method_res)
+                df.loc[df_i] = [pwc_methods[mi].__name__ + "_" + dtype, acc_method, nll_method]
+                df_i += 1
 
     df.to_csv(os.path.join(exper_outputs_path, 'accuracies.csv'), index=False)
 
