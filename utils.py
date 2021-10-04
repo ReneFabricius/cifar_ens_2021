@@ -59,7 +59,9 @@ def ens_train_save(predictors, targets, test_predictors, device, out_path, pwc_m
     for pwc_method in pwc_methods:
         ens_test_out_method = ens.predict_proba(test_predictors, pwc_method)
         ens_test_results.append(ens_test_out_method)
-        np.save(os.path.join(out_path, prefix + '_ens_test_outputs_' + pwc_method.__name__ + ".npy"),
+        np.save(os.path.join(out_path,
+                             "{}ens_test_outputs_{}_{}.npy".format(prefix, pwc_method.__name__,
+                                                                   ("double" if double_accuracy else "float"))),
                 ens_test_out_method.detach().cpu().numpy())
 
     return ens_test_results

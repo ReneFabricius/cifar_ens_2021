@@ -35,10 +35,11 @@ def ens_train_exp():
     train_outputs, train_labels, val_outputs, val_labels, test_outputs, test_labels, networks = \
         load_networks_outputs(networks_outputs_folder, exper_outputs_path, args.device)
 
-    df_net = pd.DataFrame(columns=("network", "accuracy"))
+    df_net = pd.DataFrame(columns=("network", "accuracy", "nll"))
     for i, net in enumerate(networks):
         acc = compute_acc_topk(test_labels, test_outputs[i], 1)
-        df_net.loc[i] = [net, acc]
+        nll = compute_nll(test_labels, test_outputs[i], penultimate=True)
+        df_net.loc[i] = [net, acc, nll]
 
     df_net.to_csv(os.path.join(exper_outputs_path, "net_accuracies.csv"), index=False)
 
