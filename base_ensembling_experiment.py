@@ -69,13 +69,13 @@ def ens_exp():
         lda_train_outputs = train_outputs[:, lda_train_idx, :]
         lda_train_labels = train_labels[lda_train_idx]
 
-        vt_test_ens_results = ens_train_save(lda_train_outputs, lda_train_labels,
-                                                                        test_outputs, torch.device(args.device),
-                                                                        tt_out_path, pwc_methods=pwc_methods)
+        vt_test_ens_results = ens_train_save(val_outputs, val_labels, test_outputs,
+                                             torch.device(args.device),
+                                             vt_out_path, pwc_methods=pwc_methods)
 
-        tt_test_ens_results = ens_train_save(val_outputs, val_labels, test_outputs,
-                                                                        torch.device(args.device), vt_out_path,
-                                                                        pwc_methods=pwc_methods)
+        tt_test_ens_results = ens_train_save(lda_train_outputs, lda_train_labels, test_outputs,
+                                             torch.device(args.device),
+                                             tt_out_path, pwc_methods=pwc_methods)
 
         for mi, vt_ens_res in enumerate(vt_test_ens_results):
             acc_mi = compute_acc_topk(test_labels, vt_ens_res, 1)
