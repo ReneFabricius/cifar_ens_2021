@@ -16,10 +16,11 @@ def load_npy_arr(file, device):
 def load_networks_outputs(nn_outputs_path, experiment_out_path, device):
     networks = os.listdir(nn_outputs_path)
 
-    networks_order = open(os.path.join(experiment_out_path, 'networks_order.txt'), 'w')
-    for net in networks:
-        networks_order.write(net + "\n")
-    networks_order.close()
+    if experiment_out_path is not None:
+        networks_order = open(os.path.join(experiment_out_path, 'networks_order.txt'), 'w')
+        for net in networks:
+            networks_order.write(net + "\n")
+        networks_order.close()
 
     test_outputs = []
     for net in networks:
@@ -46,10 +47,10 @@ def load_networks_outputs(nn_outputs_path, experiment_out_path, device):
 
 
 def ens_train_save(predictors, targets, test_predictors, device, out_path, pwc_methods,
-                   double_accuracy=False, prefix=''):
+                   double_accuracy=False, prefix='', verbose=True, test_normality=True):
     dtp = torch.float64 if double_accuracy else torch.float32
     ens = WeightedLDAEnsemble(predictors.shape[0], predictors.shape[2], device, dtp=dtp)
-    ens.fit_penultimate(predictors, targets, verbose=True, test_normality=True)
+    ens.fit_penultimate(predictors, targets, verbose=verbose, test_normality=test_normality)
 
     ens.save_coefs_csv(os.path.join(out_path, prefix + 'lda_coefs_{}.csv'.format("double" if double_accuracy else "float")))
     ens.save_pvals(os.path.join(out_path, prefix + 'p_values_{}.npy'.format("double" if double_accuracy else "float")))
@@ -65,3 +66,13 @@ def ens_train_save(predictors, targets, test_predictors, device, out_path, pwc_m
                 ens_test_out_method.detach().cpu().numpy())
 
     return ens_test_results
+
+
+def print_memory_statistics():
+    allocated = torch.cuda.memory_allocated()
+    max_allocated = torch.cuda.max_memory_allocated()
+    reserved = torch.cuda.memory_reserved()
+    max_reserved = torch.cuda.max_memory_reserved()
+
+    print("Allocated current: {:.3f}GB, max {:.3f}GB".format(allocated / 2**30, max_allocated / 2**30))
+    print("Reserved current: {:.3f}GB, max {:.3f}GB".format(reserved / 2**30, max_reserved / 2**30))
