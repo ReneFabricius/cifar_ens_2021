@@ -7,7 +7,7 @@ Project[^2] contains scripts for training and saving outputs of the neural netwo
 Experiments currently contained in this project are the following:
 1. Traininng subsets experiment
 2. Training subset sizes experiment
-3. Validation vs training LDA training experiment
+3. Validation set vs training set LDA training experiment
    - Approach one
    - Approach two
 4. Zero probability outputs inspection
@@ -69,7 +69,7 @@ Apart from these files, the folder also contains summary informations:
 2. net_accuracies.csv - accuracies of the networks conbined in this experiment,
 3. accuracies.csv - accuracies of the created ensembles.
 
-## Validation vs training LDA training experiment
+## Validation set vs training set LDA training experiment
 This experiment focuses on the question, whether training LDA on the same set of data as the neural networks were trained on 
 has any adverse effects to the performance of the ensemble as opposed to training on a different set, not presented to the networks during the training.  
 Experimment was performed with two slightly different approaches.
