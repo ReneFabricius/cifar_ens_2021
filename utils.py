@@ -5,8 +5,7 @@ import sys
 import torch
 
 sys.path.append('D:\\skola\\1\\weighted_ensembles')
-from my_codes.weighted_ensembles.WeightedLDAEnsemble import WeightedLDAEnsemble
-from my_codes.weighted_ensembles.SimplePWCombine import m1, m2, bc, m2_iter
+from weighted_ensembles.WeightedLDAEnsemble import WeightedLDAEnsemble
 
 
 def load_npy_arr(file, device):

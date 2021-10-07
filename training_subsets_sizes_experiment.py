@@ -5,9 +5,8 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import StratifiedKFold
 
-sys.path.append('D:\\skola\\1\\weighted_ensembles')
-from my_codes.weighted_ensembles.predictions_evaluation import compute_acc_topk, compute_nll
-from my_codes.weighted_ensembles.SimplePWCombine import m1, m2, bc, m2_iter
+from weighted_ensembles.predictions_evaluation import compute_acc_topk, compute_nll
+from weighted_ensembles.SimplePWCombine import m1, m2, bc, m2_iter
 
 import torch
 
@@ -21,7 +20,7 @@ def ens_train_exp():
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-folder', type=str, required=True, help='replication_folder')
-    parser.add_argument('-repl_num', type=int, default=30, help='max number of replications for each train size')
+    parser.add_argument('-max_fold_rep', type=int, default=30, help='max number of folds for each train size')
     parser.add_argument('-device', type=str, default='cpu', help='device on which to execute the script')
     args = parser.parse_args()
 

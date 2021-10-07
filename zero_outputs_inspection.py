@@ -1,14 +1,11 @@
 import numpy as np
 import torch
 import os
-import sys
 
 from utils import load_networks_outputs, load_npy_arr
 
-sys.path.append('D:\\skola\\1\\weighted_ensembles')
-from my_codes.weighted_ensembles.predictions_evaluation import compute_acc_topk, compute_nll
-from my_codes.weighted_ensembles.SimplePWCombine import m1, m2, bc, m2_iter
-from my_codes.weighted_ensembles.WeightedLDAEnsemble import WeightedLDAEnsemble
+from weighted_ensembles.SimplePWCombine import m1
+from weighted_ensembles.WeightedLDAEnsemble import WeightedLDAEnsemble
 
 
 def zero_outputs_inspection():

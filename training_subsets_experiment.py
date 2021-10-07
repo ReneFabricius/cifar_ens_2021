@@ -5,9 +5,8 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import StratifiedKFold
 
-sys.path.append('D:\\skola\\1\\weighted_ensembles')
-from my_codes.weighted_ensembles.predictions_evaluation import compute_acc_topk, compute_nll
-from my_codes.weighted_ensembles.SimplePWCombine import m1, m2, bc, m2_iter
+from weighted_ensembles.predictions_evaluation import compute_acc_topk, compute_nll
+from weighted_ensembles.SimplePWCombine import m1, m2, bc, m2_iter
 
 import torch
 

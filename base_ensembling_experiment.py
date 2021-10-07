@@ -1,16 +1,14 @@
 import argparse
 import os
 import numpy as np
-import sys
 import shutil
 
 import pandas as pd
 import torch
 from sklearn.model_selection import train_test_split
 
-sys.path.append('D:\\skola\\1\\weighted_ensembles')
-from my_codes.weighted_ensembles.predictions_evaluation import compute_acc_topk, compute_nll
-from my_codes.weighted_ensembles.SimplePWCombine import m1, m2, bc, m2_iter
+from weighted_ensembles.predictions_evaluation import compute_acc_topk, compute_nll
+from weighted_ensembles.SimplePWCombine import m1, m2, bc, m2_iter
 
 from utils import ens_train_save, load_networks_outputs
 
