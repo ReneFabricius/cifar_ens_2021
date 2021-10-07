@@ -1,10 +1,7 @@
 import os
 import numpy as np
-import sys
-
 import torch
 
-sys.path.append('D:\\skola\\1\\weighted_ensembles')
 from weighted_ensembles.WeightedLDAEnsemble import WeightedLDAEnsemble
 
 

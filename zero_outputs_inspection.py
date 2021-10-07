@@ -20,7 +20,7 @@ def zero_outputs_inspection():
     np.set_printoptions(precision=4, linewidth=160)
     torch_dev = torch.device(dev)
     torch_dtp = torch.float32 if precision == "float" else torch.float64
-    base_dir = "D:\\skola\\1\\weighted_ensembles\\test_cifar_2021\\train_data"
+    base_dir = "D:\\skola\\1\\weighted_ensembles\\tests\\test_cifar_2021\\data\\data_train_val_c10"
     net_outputs_path = os.path.join(base_dir, str(repl), "outputs")
     ens_output = os.path.join(base_dir, str(repl), "comb_outputs",
                               train_set + "_training", "ens_test_outputs_" + method.__name__ + "_" + precision + ".npy")
@@ -47,7 +47,7 @@ def zero_outputs_inspection():
         nets_out = test_outputs[:, [zero_ind], :]
         print("Correct label: {}".format(test_labels[zero_ind].item()))
         for ni, net in enumerate(networks):
-            print("Network {} prediction:\n{}".format(net, test_outputs[ni, zero_ind]))
+            print("Network {} prediction:\n{}".format(net, test_outputs[ni, zero_ind].cpu().numpy()))
 
         ens_output = ens.predict_proba(nets_out, method, debug_pwcm=True)
 
