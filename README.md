@@ -72,9 +72,9 @@ Apart from these files, the folder also contains summary informations:
 ## Validation set vs training set LDA training experiment
 This experiment focuses on the question, whether training LDA on the same set of data as the neural networks were trained on 
 has any adverse effects to the performance of the ensemble as opposed to training on a different set, not presented to the networks during the training.  
-Experimment was performed with two slightly different approaches.
+Experiment was performed with two slightly different approaches.
 
-### Aproach one
+### Approach one
 Experiment code is in the file *base_ensembling_experiment.py*.  
 **Experiment on CIFAR10 dataset.**  
 This experiment was performed in 30 replications. In each replication a set of 500 samples from CIFAR10 training set was randomly chosen, 
@@ -103,7 +103,7 @@ Both these folders contain stored WeightedLDAEnsemble model and outputs of all t
 Apart from these replication-specific outputs, the experiment also produces summary outputs *ensemble_accuracies.csv* and *net_accuracies.csv*.
 Both of these files are stored in the experiment root folder.
 
-### Aproach two
+### Approach two
 Experiment code is in the file *half_train_ensembling_experiment.py*.  
 **Experiment on both CIFAR10 and CIFAR100 datasets.**  
 This experiment differs from the previous one in the neural networks training part. 
