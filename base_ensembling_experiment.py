@@ -25,6 +25,10 @@ def ens_exp():
     parser.add_argument('-repl', type=int, default=1, help='number of replications')
     parser.add_argument('-cifar', default=100, type=int, help='cifar type (10 or 100)')
     parser.add_argument('-device', type=str, default='cpu', help='device on which to execute the script')
+    parser.add_argument('-save_R', dest='save_R', action='store_true',
+                        help='Save R matrices entering into the coupling methods')
+    parser.add_argument('-no_save_R', dest='save_R', action='store_false')
+    parser.set_defaults(save_R=False)
     args = parser.parse_args()
 
     df_ens = pd.DataFrame(columns=('repli', 'train_set', 'method', 'accuracy', 'nll'))
@@ -69,11 +73,13 @@ def ens_exp():
 
         vt_test_ens_results = ens_train_save(val_outputs, val_labels, test_outputs,
                                              torch.device(args.device),
-                                             vt_out_path, pwc_methods=pwc_methods)
+                                             vt_out_path, pwc_methods=pwc_methods,
+                                             save_R_mats=args.save_R)
 
         tt_test_ens_results = ens_train_save(lda_train_outputs, lda_train_labels, test_outputs,
                                              torch.device(args.device),
-                                             tt_out_path, pwc_methods=pwc_methods)
+                                             tt_out_path, pwc_methods=pwc_methods,
+                                             save_R_mats=args.save_R)
 
         for mi, vt_ens_res in enumerate(vt_test_ens_results):
             acc_mi = compute_acc_topk(test_labels, vt_ens_res, 1)

@@ -26,6 +26,10 @@ def ens_exp():
     parser.add_argument('-repl', type=int, default=1, help='number of replications')
     parser.add_argument('-cifar', default=100, type=int, help='cifar type (10 or 100)')
     parser.add_argument('-device', type=str, default='cpu', help='device on which to execute the script')
+    parser.add_argument('-save_R', dest='save_R', action='store_true',
+                        help='Save R matrices entering into the coupling methods')
+    parser.add_argument('-no_save_R', dest='save_R', action='store_false')
+    parser.set_defaults(save_R=False)
     args = parser.parse_args()
 
     torch_dev = torch.device(args.device)
@@ -105,7 +109,8 @@ def ens_exp():
                                                   test_predictors=test_outputs, device=torch_dev,
                                                   out_path=par["out_fold"],
                                                   pwc_methods=pwc_methods, prefix="fold_{}_".format(fold_i),
-                                                  verbose=False, test_normality=False)
+                                                  verbose=False, test_normality=False,
+                                                  save_R_mats=args.save_R)
 
                 for mi, ens_res in enumerate(fold_ens_results):
                     acc_mi = compute_acc_topk(test_labels, ens_res, 1)
