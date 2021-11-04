@@ -64,13 +64,12 @@ def ens_exp():
         os.mkdir(vt_out_path)
 
         print("Loading networks outputs")
-        train_outputs, train_labels, val_outputs, val_labels, test_outputs, test_labels, networks = \
-            load_networks_outputs(nn_outputs_path, comb_out_path, load_device)
+        net_outputs = load_networks_outputs(nn_outputs_path, comb_out_path, load_device)
 
         print("Evaluating networks")
-        for i, net in enumerate(networks):
-            acc = compute_acc_topk(test_labels, test_outputs[i], 1)
-            nll = compute_nll(test_labels, test_outputs[i], penultimate=True)
+        for i, net in enumerate(net_outputs["networks"]):
+            acc = compute_acc_topk(test_labels, net_outputs["test_outputs"][i], 1)
+            nll = compute_nll(test_labels, net_outputs["test_outputs"][i], penultimate=True)
             df_net.loc[df_net_i] = [repli, net, acc, nll]
             df_net_i += 1
 
@@ -78,8 +77,8 @@ def ens_exp():
 
         test_labels = test_labels.to(device=torch_dev)
 
-        train_set_size = len(train_labels)
-        val_set_size = len(val_labels)
+        train_set_size = len(net_outputs["train_labels"])
+        val_set_size = len(net_outputs["val_labels"])
 
         n_folds_train = train_set_size // args.fold_size
         n_folds_val = val_set_size // args.fold_size
@@ -87,9 +86,11 @@ def ens_exp():
         skf_train = StratifiedKFold(n_splits=n_folds_train, shuffle=True)
         skf_val = StratifiedKFold(n_splits=n_folds_val, shuffle=True)
 
-        param_sets = [{"skf": skf_train, "train_set": "tt", "train_preds": train_outputs, "train_labs": train_labels,
+        param_sets = [{"skf": skf_train, "train_set": "tt", "train_preds": net_outputs["train_outputs"],
+                       "train_labs": net_outputs["train_labels"],
                        "out_fold": tt_out_path},
-                      {"skf": skf_val, "train_set": "vt", "train_preds": val_outputs, "train_labs": val_labels,
+                      {"skf": skf_val, "train_set": "vt", "train_preds": net_outputs["val_outputs"],
+                       "train_labs": net_outputs["val_labels"],
                        "out_fold": vt_out_path}]
 
         for par in param_sets:
@@ -106,7 +107,7 @@ def ens_exp():
                 print_memory_statistics()
 
                 fold_ens_results = ens_train_save(predictors=fold_pred, targets=fold_lab,
-                                                  test_predictors=test_outputs, device=torch_dev,
+                                                  test_predictors=net_outputs["test_outputs"], device=torch_dev,
                                                   out_path=par["out_fold"],
                                                   pwc_methods=pwc_methods, prefix="fold_{}_".format(fold_i),
                                                   verbose=False, test_normality=False,

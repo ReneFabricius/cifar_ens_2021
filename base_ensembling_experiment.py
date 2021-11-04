@@ -54,42 +54,43 @@ def ens_exp():
             shutil.rmtree(vt_out_path)
         os.mkdir(vt_out_path)
 
-        train_outputs, train_labels, val_outputs, val_labels, test_outputs, test_labels, networks = \
-            load_networks_outputs(nn_outputs_path, comb_out_path, args.device)
+        net_outputs = load_networks_outputs(nn_outputs_path, comb_out_path, args.device)
 
-        for i, net in enumerate(networks):
-            acc = compute_acc_topk(test_labels, test_outputs[i], 1)
-            nll = compute_nll(test_labels, test_outputs[i], penultimate=True)
+        for i, net in enumerate(net_outputs["networks"]):
+            acc = compute_acc_topk(net_outputs["test_labels"], net_outputs["test_outputs"][i], 1)
+            nll = compute_nll(net_outputs["test_labels"], net_outputs["test_outputs"][i], penultimate=True)
             df_net.loc[df_net_i] = [repli, net, acc, nll]
             df_net_i += 1
 
-        _, lda_train_idx = train_test_split(np.arange(train_labels.shape[0]), test_size=val_labels.shape[0],
-                                            shuffle=True, stratify=train_labels.cpu())
+        _, lda_train_idx = train_test_split(np.arange(net_outputs["train_labels"].shape[0]),
+                                            test_size=net_outputs["val_labels"].shape[0],
+                                            shuffle=True, stratify=net_outputs["train_labels"].cpu())
 
         np.save(os.path.join(tt_out_path, 'lda_train_idx.npy'), np.array(lda_train_idx))
 
-        lda_train_outputs = train_outputs[:, lda_train_idx, :]
-        lda_train_labels = train_labels[lda_train_idx]
+        lda_train_outputs = net_outputs["train_outputs"][:, lda_train_idx, :]
+        lda_train_labels = net_outputs["train_labels"][lda_train_idx]
 
-        vt_test_ens_results = ens_train_save(val_outputs, val_labels, test_outputs,
+        vt_test_ens_results = ens_train_save(net_outputs["val_outputs"], net_outputs["val_labels"],
+                                             net_outputs["test_outputs"],
                                              torch.device(args.device),
                                              vt_out_path, pwc_methods=pwc_methods,
                                              save_R_mats=args.save_R)
 
-        tt_test_ens_results = ens_train_save(lda_train_outputs, lda_train_labels, test_outputs,
+        tt_test_ens_results = ens_train_save(lda_train_outputs, lda_train_labels, net_outputs["test_outputs"],
                                              torch.device(args.device),
                                              tt_out_path, pwc_methods=pwc_methods,
                                              save_R_mats=args.save_R)
 
         for mi, vt_ens_res in enumerate(vt_test_ens_results):
-            acc_mi = compute_acc_topk(test_labels, vt_ens_res, 1)
-            nll_mi = compute_nll(test_labels, vt_ens_res)
+            acc_mi = compute_acc_topk(net_outputs["test_labels"], vt_ens_res, 1)
+            nll_mi = compute_nll(net_outputs["test_labels"], vt_ens_res)
             df_ens.loc[df_ens_i] = [repli, 'vt', pwc_methods[mi].__name__, acc_mi, nll_mi]
             df_ens_i += 1
 
         for mi, tt_ens_res in enumerate(tt_test_ens_results):
-            acc_mi = compute_acc_topk(test_labels, tt_ens_res, 1)
-            nll_mi = compute_nll(test_labels, tt_ens_res)
+            acc_mi = compute_acc_topk(net_outputs["test_labels"], tt_ens_res, 1)
+            nll_mi = compute_nll(net_outputs["test_labels"], tt_ens_res)
             df_ens.loc[df_ens_i] = [repli, "tt", pwc_methods[mi].__name__, acc_mi, nll_mi]
             df_ens_i += 1
 

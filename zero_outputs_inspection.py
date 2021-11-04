@@ -27,12 +27,11 @@ def zero_outputs_inspection():
     model_file = os.path.join(base_dir, str(repl), "comb_outputs",
                               train_set + "_training", "model_" + precision)
 
-    train_outputs, train_labels, val_outputs, val_labels, test_outputs, test_labels, networks = \
-        load_networks_outputs(net_outputs_path, None, dev)
+    net_outputs = load_networks_outputs(net_outputs_path, None, dev)
 
     ens_output = load_npy_arr(ens_output, dev)
 
-    correct_probabilities = ens_output.gather(dim=1, index=test_labels.unsqueeze(1))
+    correct_probabilities = ens_output.gather(dim=1, index=net_outputs["test_labels"].unsqueeze(1))
 
     num_zeros = torch.sum(correct_probabilities == 0).item()
 
@@ -44,10 +43,10 @@ def zero_outputs_inspection():
     ens.load(model_file)
 
     for i, zero_ind in enumerate(zero_inds[:print_num]):
-        nets_out = test_outputs[:, [zero_ind], :]
-        print("Correct label: {}".format(test_labels[zero_ind].item()))
-        for ni, net in enumerate(networks):
-            print("Network {} prediction:\n{}".format(net, test_outputs[ni, zero_ind].cpu().numpy()))
+        nets_out = net_outputs["test_outputs"][:, [zero_ind], :]
+        print("Correct label: {}".format(net_outputs["test_labels"][zero_ind].item()))
+        for ni, net in enumerate(net_outputs["networks"]):
+            print("Network {} prediction:\n{}".format(net, net_outputs["test_outputs"][ni, zero_ind].cpu().numpy()))
 
         ens_output = ens.predict_proba(nets_out, method, debug_pwcm=True)
 

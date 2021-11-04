@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import pandas as pd
 import torch
 import regex as re
 
@@ -10,7 +11,15 @@ def load_npy_arr(file, device):
     return torch.from_numpy(np.load(file)).to(torch.device(device))
 
 
-def load_networks_outputs(nn_outputs_path, experiment_out_path, device):
+def load_networks_outputs(nn_outputs_path, experiment_out_path=None, device='cpu'):
+    """
+    Loads network outputs for single replication. Dimensions in the output tensors are network, sample, class.
+    :param nn_outputs_path: replication outputs path.
+    :param experiment_out_path: if not None a path to folder where to store networks_order file
+    containing the order of the networks
+    :param device: device to use
+    :return: dictionary with network outputs and labels
+    """
     networks = os.listdir(nn_outputs_path)
 
     if experiment_out_path is not None:
@@ -40,7 +49,9 @@ def load_networks_outputs(nn_outputs_path, experiment_out_path, device):
     val_outputs = torch.cat(val_outputs, 0)
     val_labels = load_npy_arr(os.path.join(nn_outputs_path, networks[0], 'val_labels.npy'), device)
 
-    return train_outputs, train_labels, val_outputs, val_labels, test_outputs, test_labels, networks
+    return {"train_outputs": train_outputs, "train_labels": train_labels, "val_outputs": val_outputs,
+            "val_labels": val_labels, "test_outputs": test_outputs, "test_labels": test_labels,
+            "networks": networks}
 
 
 def ens_train_save(predictors, targets, test_predictors, device, out_path, pwc_methods,
@@ -96,8 +107,8 @@ def average_Rs(outputs_path, replications, folds=None, device="cuda"):
     files = os.listdir(os.path.join(outputs_path, "0", outputs_folder, train_types[0]))
     ptrn = re.compile(pattern)
     precisions = list(set([re.search(ptrn, f).group(1) for f in files if re.search(ptrn, f) is not None]))
-    _, _, _, _, _, test_labels, _ = \
-        load_networks_outputs(os.path.join(outputs_path, "0", net_outputs_folder), None, device)
+    net_outputs = load_networks_outputs(os.path.join(outputs_path, "0", net_outputs_folder), None, device)
+    test_labels = net_outputs["test_labels"]
 
     classes = len(torch.unique(test_labels))
     labels_mask = [(test_labels == ci).unsqueeze(0) for ci in range(classes)]
@@ -154,6 +165,39 @@ def average_Rs(outputs_path, replications, folds=None, device="cuda"):
 
         np.save(os.path.join(outputs_path, tr_tp + "_class_aggr_R.npy"), repli_aggr.cpu().numpy())
 
+
+def compute_pairwise_accuracies(preds, labs):
+    """
+    Computes pairwise accuracies of the provided predictions according too provided labels.
+    :param preds: 2D tensor of probabilistic predictions of the size samples×classes,
+    or 3D tensor of pairwise probabilities of the size samples×classes×classes
+    :param labs: correct labels
+    :return: DataFrame containing pairwise accuracies
+    """
+    class_n = len(torch.unique(labs))
+    df = pd.DataFrame(columns=("class1", "class2", "accuracy"))
+    df_i = 0
+    for c1 in range(class_n):
+        for c2 in range(c1 + 1, class_n):
+            sample_mask = (labs == c1) + (labs == c2)
+
+            if len(preds.shape) == 2:
+                relev_preds = preds[sample_mask, :][:, [c1, c2]]
+            elif len(preds.shape) == 3:
+                c1_relev_preds = preds[sample_mask, :, :][:, c1, c2]
+                c2_relev_preds = preds[sample_mask, :, :][:, c2, c1]
+                relev_preds = torch.cat([c1_relev_preds.unsqueeze(1), c2_relev_preds.unsqueeze(1)], dim=1)
+
+            top_v, top_i = torch.topk(relev_preds, 1, dim=1)
+            ti = top_i.squeeze(dim=1)
+            relev_labs = labs[sample_mask]
+            paired_labs = torch.zeros_like(relev_labs)
+            paired_labs[relev_labs == c2] = 1
+            acc = torch.sum(ti == paired_labs) / float(len(paired_labs))
+            df.loc[df_i] = [c1, c2, acc.item()]
+            df_i += 1
+
+    return df
 
 
 
