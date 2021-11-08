@@ -168,7 +168,7 @@ def average_Rs(outputs_path, replications, folds=None, device="cuda"):
 
 def compute_pairwise_accuracies(preds, labs):
     """
-    Computes pairwise accuracies of the provided predictions according too provided labels.
+    Computes pairwise accuracies of the provided predictions according to provided labels.
     :param preds: 2D tensor of probabilistic predictions of the size samples×classes,
     or 3D tensor of pairwise probabilities of the size samples×classes×classes
     :param labs: correct labels
@@ -199,6 +199,71 @@ def compute_pairwise_accuracies(preds, labs):
 
     return df
 
+
+def compute_pairwise_calibration(R_mat, labs):
+    """
+    Computes calibration plot data (confidence vs accuracy) for each class pair.
+    :param R_mat: Matrices of outputs from LDA models.
+    :param labs: Correct labels
+    :return: Dataframe containing class pair, start and end value of confidence interval (conf_min; conf_max],
+    accuracy of predictions falling to the bin and number of predictions falling to the bin
+    """
+    bins = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+    class_n = len(torch.unique(labs))
+    df = pd.DataFrame(columns=("class1", "class2", "conf_min", "conf_max", "bin_accuracy", "bin_count"))
+    df_i = 0
+    for c1 in range(class_n):
+        for c2 in range(c1 + 1, class_n):
+            sample_mask = (labs == c1) + (labs == c2)
+            c1_relev_preds = R_mat[sample_mask, :, :][:, c1, c2]
+            c2_relev_preds = R_mat[sample_mask, :, :][:, c2, c1]
+            for bei in range(1, len(bins)):
+                bs = bins[bei - 1]
+                be = bins[bei]
+                if bei == 1:
+                    c1_bin_mask = c1_relev_preds <= be
+                    c2_bin_mask = c2_relev_preds <= be
+                else:
+                    c1_bin_mask = (c1_relev_preds > bs) & (c1_relev_preds <= be)
+                    c2_bin_mask = (c2_relev_preds > bs) & (c2_relev_preds <= be)
+
+                relev_labs = labs[sample_mask]
+                c1_cor_count = torch.sum(relev_labs[c1_bin_mask] == c1).item()
+                c2_cor_count = torch.sum(relev_labs[c2_bin_mask] == c2).item()
+                bin_samples_count = torch.sum(c1_bin_mask).item() + torch.sum(c2_bin_mask).item()
+                bin_correct = c1_cor_count + c2_cor_count
+                bin_acc = bin_correct / bin_samples_count if bin_samples_count != 0 else pd.NA
+
+                df.loc[df_i] = [c1, c2, bs, be, bin_acc, bin_samples_count]
+                df_i += 1
+
+    return df
+
+
+def get_irrelevant_predictions(R_mat, labs):
+    """
+    Computes irrelevant outputs of LDA models. Irrelevant outputs are predictions for all classes for which the LDA
+    wasn't trained.
+    :param R_mat: Matrices of outputs from LDA models.
+    :param labs: Correct labels.
+    :return: Dataframe containing information about class pair (for which the LDA was trained) and predictions
+    for class 1 and class 2 of the LDA model.
+    """
+    class_n = len(torch.unique(labs))
+    df = pd.DataFrame(columns=("class1", "class2", "pred1", "pred2"))
+    for c1 in range(class_n):
+        for c2 in range(c1 + 1, class_n):
+            sample_mask = (labs == c1) + (labs == c2)
+            sample_mask_inv = (sample_mask != True)
+            irrel_count = torch.sum(sample_mask_inv)
+            c1_irrelev_preds = R_mat[sample_mask_inv, :, :][:, c1, c2]
+            c2_irrelev_preds = R_mat[sample_mask_inv, :, :][:, c2, c1]
+            cur_df = pd.DataFrame(data={"class1": [c1]*irrel_count, "class2": [c2]*irrel_count,
+                                        "pred1": c1_irrelev_preds.tolist(),
+                                        "pred2": c2_irrelev_preds.tolist()})
+            df = pd.concat([df, cur_df])
+
+    return df
 
 
 

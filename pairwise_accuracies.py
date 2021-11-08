@@ -3,7 +3,7 @@ import argparse
 import pandas as pd
 import os
 import re
-from utils import load_networks_outputs, compute_pairwise_accuracies, load_npy_arr
+from utils import load_networks_outputs, compute_pairwise_accuracies, load_npy_arr, compute_pairwise_calibration, get_irrelevant_predictions
 
 
 def pairwise_accuracies():
@@ -13,9 +13,12 @@ def pairwise_accuracies():
     parser.add_argument('-folds', type=int, default=1, help='number of folds')
     parser.add_argument('-cifar', default=100, type=int, help='cifar type (10 or 100)')
     parser.add_argument('-device', type=str, default='cpu', help='device on which to execute the script')
+    parser.add_argument('-comp_irrel', dest='comp_irrel', action='store_true',
+                        help='Output LDA predictions for irrelevant classes')
+    parser.add_argument('-no_comp_irrel', dest='comp_irrel', action='store_false')
+    parser.set_defaults(comp_irrel=False)
     args = parser.parse_args()
 
-    load_device = args.device if args.cifar == 10 else "cpu"
     train_types = ["train_training", "val_training"]
 
     outputs_match = "ens_test_R_"
@@ -27,6 +30,12 @@ def pairwise_accuracies():
     df_ens = pd.DataFrame(columns=('repli', 'fold', 'train_set', 'precision', 'class1', 'class2', 'accuracy'))
 
     df_net = pd.DataFrame(columns=("repli", "network", 'class1', 'class2', "accuracy"))
+
+    df_ens_cal = pd.DataFrame(columns=('repli', 'fold', 'train_set', 'precision', 'class1', 'class2',
+                                       'conf_min', 'conf_max', 'bin_accuracy', 'bin_count'))
+
+    df_ens_irrel = pd.DataFrame(columns=('repli', 'fold', 'train_set', 'precision', 'class1', 'class2',
+                                         'pred1', 'pred2'))
 
     for repli in range(args.repl):
         print("Processing repli {}".format(repli))
@@ -63,6 +72,21 @@ def pairwise_accuracies():
                     df["precision"] = prec
                     df_ens = pd.concat([df_ens, df])
 
+                    df_cal = compute_pairwise_calibration(R_mat, labs)
+                    df_cal["repli"] = repli
+                    df_cal["fold"] = 0
+                    df_cal["train_set"] = tr_tp
+                    df_cal["precision"] = prec
+                    df_ens_cal = pd.concat([df_ens_cal, df_cal])
+
+                    if args.comp_irrel:
+                        df_irrel = get_irrelevant_predictions(R_mat, labs)
+                        df_irrel["repli"] = repli
+                        df_irrel["fold"] = 0
+                        df_irrel["train_set"] = tr_tp
+                        df_irrel["precision"] = prec
+                        df_ens_irrel = pd.concat([df_ens_irrel, df_irrel])
+
                 else:
                     for foldi in range(args.folds):
                         print("Processing fold {}".format(foldi))
@@ -76,8 +100,26 @@ def pairwise_accuracies():
                         df["precision"] = prec
                         df_ens = pd.concat([df_ens, df])
 
+                        df_cal = compute_pairwise_calibration(R_mat, labs)
+                        df_cal["repli"] = repli
+                        df_cal["fold"] = foldi
+                        df_cal["train_set"] = tr_tp
+                        df_cal["precision"] = prec
+                        df_ens_cal = pd.concat([df_ens_cal, df_cal])
+
+                        if args.comp_irrel:
+                            df_irrel = get_irrelevant_predictions(R_mat, labs)
+                            df_irrel["repli"] = repli
+                            df_irrel["fold"] = foldi
+                            df_irrel["train_set"] = tr_tp
+                            df_irrel["precision"] = prec
+                            df_ens_irrel = pd.concat([df_ens_irrel, df_irrel])
+
     df_ens.to_csv(os.path.join(args.folder, 'ensemble_pw_accuracies.csv'), index=False)
     df_net.to_csv(os.path.join(args.folder, "net_pw_accuracies.csv"), index=False)
+    df_ens_cal.to_csv(os.path.join(args.folder, "ensemble_pw_calibration.csv"), index=False)
+    if args.comp_irrel:
+        df_ens_irrel.to_csv(os.path.join(args.folder, "ensemble_pw_irrelevant.csv"), index=False)
 
 
 if __name__ == '__main__':
