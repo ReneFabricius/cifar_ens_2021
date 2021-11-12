@@ -18,7 +18,8 @@ VAL_TRAIN = 'val_training'
 
 
 def ens_exp():
-    pwc_methods = [m1, m2, m2_iter, bc]
+    coupling_methods = [m1, m2, m2_iter, bc]
+    combining_methods = ["lda", "logreg", "logreg_no_interc"]
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-folder', type=str, required=True, help='experiment root folder')
@@ -31,7 +32,7 @@ def ens_exp():
     parser.set_defaults(save_R=False)
     args = parser.parse_args()
 
-    df_ens = pd.DataFrame(columns=('repli', 'train_set', 'method', 'accuracy', 'nll'))
+    df_ens = pd.DataFrame(columns=('repli', 'train_set', 'combining_method', 'coupling_method', 'accuracy', 'nll'))
     df_ens_i = 0
 
     df_net = pd.DataFrame(columns=("repli", "network", "accuracy", "nll"))
@@ -74,25 +75,31 @@ def ens_exp():
         vt_test_ens_results = ens_train_save(net_outputs["val_outputs"], net_outputs["val_labels"],
                                              net_outputs["test_outputs"],
                                              torch.device(args.device),
-                                             vt_out_path, pwc_methods=pwc_methods,
+                                             vt_out_path, combining_methods=combining_methods,
+                                             coupling_methods=coupling_methods,
                                              save_R_mats=args.save_R)
 
         tt_test_ens_results = ens_train_save(lda_train_outputs, lda_train_labels, net_outputs["test_outputs"],
                                              torch.device(args.device),
-                                             tt_out_path, pwc_methods=pwc_methods,
+                                             tt_out_path, combining_methods=combining_methods,
+                                             coupling_methods=coupling_methods,
                                              save_R_mats=args.save_R)
 
-        for mi, vt_ens_res in enumerate(vt_test_ens_results):
-            acc_mi = compute_acc_topk(net_outputs["test_labels"], vt_ens_res, 1)
-            nll_mi = compute_nll(net_outputs["test_labels"], vt_ens_res)
-            df_ens.loc[df_ens_i] = [repli, 'vt', pwc_methods[mi].__name__, acc_mi, nll_mi]
-            df_ens_i += 1
+        for co_m in combining_methods:
+            for cp_m in [cp.__name__ for cp in coupling_methods]:
+                vt_ens_res = vt_test_ens_results.get(co_m, cp_m)
+                acc_mi = compute_acc_topk(net_outputs["test_labels"], vt_ens_res, 1)
+                nll_mi = compute_nll(net_outputs["test_labels"], vt_ens_res)
+                df_ens.loc[df_ens_i] = [repli, 'vt', co_m, cp_m, acc_mi, nll_mi]
+                df_ens_i += 1
 
-        for mi, tt_ens_res in enumerate(tt_test_ens_results):
-            acc_mi = compute_acc_topk(net_outputs["test_labels"], tt_ens_res, 1)
-            nll_mi = compute_nll(net_outputs["test_labels"], tt_ens_res)
-            df_ens.loc[df_ens_i] = [repli, "tt", pwc_methods[mi].__name__, acc_mi, nll_mi]
-            df_ens_i += 1
+        for co_m in combining_methods:
+            for cp_m in [cp.__name__ for cp in coupling_methods]:
+                tt_ens_res = tt_test_ens_results.get(co_m, cp_m)
+                acc_mi = compute_acc_topk(net_outputs["test_labels"], tt_ens_res, 1)
+                nll_mi = compute_nll(net_outputs["test_labels"], tt_ens_res)
+                df_ens.loc[df_ens_i] = [repli, "tt", co_m, cp_m, acc_mi, nll_mi]
+                df_ens_i += 1
 
     df_ens.to_csv(os.path.join(args.folder, 'ensemble_accuracies.csv'), index=False)
     df_net.to_csv(os.path.join(args.folder, "net_accuracies.csv"), index=False)

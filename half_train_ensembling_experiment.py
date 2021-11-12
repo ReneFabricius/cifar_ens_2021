@@ -18,7 +18,8 @@ VAL_TRAIN = 'val_training'
 
 
 def ens_exp():
-    pwc_methods = [m1, m2, m2_iter, bc]
+    coupling_methods = [m1, m2, m2_iter, bc]
+    combining_methods = ["lda", "logreg", "logreg_no_interc"]
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-folder', type=str, required=True, help='experiment root folder')
@@ -37,7 +38,8 @@ def ens_exp():
     load_device = args.device if args.cifar == 10 else "cpu"
     torch_dev_load = torch.device(load_device)
 
-    df_ens = pd.DataFrame(columns=('repli', 'fold',  'train_set', 'method', 'accuracy', 'nll'))
+    df_ens = pd.DataFrame(columns=('repli', 'fold',  'train_set', 'combining_method', 'coupling_method',
+                                   'accuracy', 'nll'))
     df_ens_i = 0
 
     df_net = pd.DataFrame(columns=("repli", "network", "accuracy", "nll"))
@@ -68,14 +70,14 @@ def ens_exp():
 
         print("Evaluating networks")
         for i, net in enumerate(net_outputs["networks"]):
-            acc = compute_acc_topk(test_labels, net_outputs["test_outputs"][i], 1)
-            nll = compute_nll(test_labels, net_outputs["test_outputs"][i], penultimate=True)
+            acc = compute_acc_topk(net_outputs["test_labels"], net_outputs["test_outputs"][i], 1)
+            nll = compute_nll(net_outputs["test_labels"], net_outputs["test_outputs"][i], penultimate=True)
             df_net.loc[df_net_i] = [repli, net, acc, nll]
             df_net_i += 1
 
         df_net.to_csv(os.path.join(args.folder, "net_accuracies.csv"), index=False)
 
-        test_labels = test_labels.to(device=torch_dev)
+        test_labels = net_outputs["test_labels"].to(device=torch_dev)
 
         train_set_size = len(net_outputs["train_labels"])
         val_set_size = len(net_outputs["val_labels"])
@@ -98,27 +100,36 @@ def ens_exp():
             for fold_i, (_, fold_idxs) in enumerate(par["skf"].split(np.zeros(len(par["train_labs"])),
                                                                par["train_labs"].detach().cpu().clone().numpy())):
 
-                np.save(os.path.join(par["out_fold"], '{}_lda_{}_idx.npy'.format(fold_i, par["train_set"])),
+                print("Processing fold {}".format(fold_i))
+                print_memory_statistics(list_tensors=True)
+
+                np.save(os.path.join(par["out_fold"], '{}_lin_comb_{}_idx.npy'.format(fold_i, par["train_set"])),
                         np.array(fold_idxs))
                 fold_idxs = torch.from_numpy(fold_idxs).to(device=torch_dev_load, dtype=torch.long)
                 fold_pred = par["train_preds"][:, fold_idxs, :].to(device=torch_dev, dtype=torch_dtp)
                 fold_lab = par["train_labs"][fold_idxs].to(device=torch_dev, dtype=torch_dtp)
 
+                print("Memory before ensembling")
                 print_memory_statistics()
 
                 fold_ens_results = ens_train_save(predictors=fold_pred, targets=fold_lab,
                                                   test_predictors=net_outputs["test_outputs"], device=torch_dev,
                                                   out_path=par["out_fold"],
-                                                  pwc_methods=pwc_methods, prefix="fold_{}_".format(fold_i),
+                                                  combining_methods=combining_methods,
+                                                  coupling_methods=coupling_methods, prefix="fold_{}_".format(fold_i),
                                                   verbose=False, test_normality=False,
                                                   save_R_mats=args.save_R)
 
-                for mi, ens_res in enumerate(fold_ens_results):
-                    acc_mi = compute_acc_topk(test_labels, ens_res, 1)
-                    nll_mi = compute_nll(test_labels, ens_res)
-                    df_ens.loc[df_ens_i] = [repli, fold_i, par["train_set"], pwc_methods[mi].__name__, acc_mi, nll_mi]
-                    df_ens_i += 1
+                for co_m in combining_methods:
+                    for cp_m in [cp.__name__ for cp in coupling_methods]:
+                        ens_res = fold_ens_results.get(co_m, cp_m)
+                        acc_mi = compute_acc_topk(test_labels, ens_res, 1)
+                        nll_mi = compute_nll(test_labels, ens_res)
+                        df_ens.loc[df_ens_i] = [repli, fold_i, par["train_set"], co_m, cp_m, acc_mi, nll_mi]
+                        df_ens_i += 1
 
+                del fold_ens_results
+                print("Memory after saving results")
                 print_memory_statistics()
 
     df_ens.to_csv(os.path.join(args.folder, 'ensemble_accuracies.csv'), index=False)

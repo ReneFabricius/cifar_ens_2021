@@ -15,7 +15,8 @@ EXP_OUTPUTS_FOLDER = 'exp_subsets_sizes_train_outputs'
 
 
 def ens_train_exp():
-    pwc_methods = [m1, m2, m2_iter, bc]
+    combining_methods = ["lda", "logreg", "logreg_no_interc"]
+    coupling_methods = [m1, m2, m2_iter, bc]
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-folder', type=str, required=True, help='replication_folder')
@@ -40,7 +41,7 @@ def ens_train_exp():
 
     df_net.to_csv(os.path.join(exper_outputs_path, "net_accuracies.csv"), index=False)
 
-    df = pd.DataFrame(columns=("method", "train_size", "accuracy", "nll"))
+    df = pd.DataFrame(columns=("combining_method", "coupling_method", "train_size", "accuracy", "nll"))
     df_i = 0
 
     n_samples = net_outputs["train_labels"].shape[0]
@@ -49,34 +50,40 @@ def ens_train_exp():
     quot = 1.4
     cur_t_size = min_t_size
     while cur_t_size < max_t_size:
-        print("Processing lda train set size {}".format(cur_t_size))
+        print("Processing combiner train set size {}".format(cur_t_size))
         n_folds = n_samples // cur_t_size
 
         skf = StratifiedKFold(n_splits=n_folds, shuffle=True)
 
-        for fold_i, (_, lda_train_idxs) in enumerate(skf.split(np.zeros(n_samples),
+        for fold_i, (_, comb_train_idxs) in enumerate(skf.split(np.zeros(n_samples),
                                                         net_outputs["train_labels"].detach().cpu().clone().numpy())):
-            if fold_i >= args.repl_num:
+            if fold_i >= args.max_fold_rep:
                 break
 
-            real_t_size = len(lda_train_idxs)
+            real_t_size = len(comb_train_idxs)
 
             print("Processing fold {}".format(fold_i))
             print("Real train size {}".format(real_t_size))
-            np.save(os.path.join(exper_outputs_path, "lda_train_idx_size_{}_repl_{}.npy".format(cur_t_size, fold_i)),
-                    lda_train_idxs)
-            lda_train_idxs = torch.from_numpy(lda_train_idxs).to(device=torch.device(args.device), dtype=torch.long)
-            lda_train_pred = net_outputs["train_outputs"][:, lda_train_idxs, :]
-            lda_train_lab = net_outputs["train_labels"][lda_train_idxs]
-            test_ens_results = ens_train_save(lda_train_pred, lda_train_lab, net_outputs["test_outputs"],
-                                                torch.device(args.device), exper_outputs_path,
-                                                pwc_methods, "size_{}_repl_{}_".format(real_t_size, fold_i))
+            np.save(os.path.join(exper_outputs_path, "combiner_train_idx_size_{}_repl_{}.npy".format(cur_t_size, fold_i)),
+                    comb_train_idxs)
+            comb_train_idxs = torch.from_numpy(comb_train_idxs).to(device=torch.device(args.device), dtype=torch.long)
+            comb_train_pred = net_outputs["train_outputs"][:, comb_train_idxs, :]
+            comb_train_lab = net_outputs["train_labels"][comb_train_idxs]
 
-            for mi, test_ens_res in enumerate(test_ens_results):
-                acc_method = compute_acc_topk(net_outputs["test_labels"], test_ens_res, 1)
-                nll_method = compute_nll(net_outputs["test_labels"], test_ens_res)
-                df.loc[df_i] = [pwc_methods[mi].__name__, real_t_size, acc_method, nll_method]
-                df_i += 1
+            test_ens_results = ens_train_save(predictors=comb_train_pred, targets=comb_train_lab,
+                                              test_predictors=net_outputs["test_outputs"],
+                                              device=torch.device(args.device), out_path=exper_outputs_path,
+                                              combining_methods=combining_methods,
+                                              coupling_methods=coupling_methods,
+                                              prefix="size_{}_repl_{}_".format(real_t_size, fold_i))
+
+            for co_m in combining_methods:
+                for cp_m in [cp.__name__ for cp in coupling_methods]:
+                    test_ens_res = test_ens_results.get(co_m, cp_m)
+                    acc_method = compute_acc_topk(net_outputs["test_labels"], test_ens_res, 1)
+                    nll_method = compute_nll(net_outputs["test_labels"], test_ens_res)
+                    df.loc[df_i] = [co_m, cp_m, real_t_size, acc_method, nll_method]
+                    df_i += 1
 
         cur_t_size = int(quot * cur_t_size)
 

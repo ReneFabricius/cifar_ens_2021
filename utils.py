@@ -3,8 +3,11 @@ import numpy as np
 import pandas as pd
 import torch
 import regex as re
+import gc
 
-from weighted_ensembles.WeightedLDAEnsemble import WeightedLDAEnsemble
+from weighted_ensembles.WeightedLinearEnsemble import WeightedLinearEnsemble
+from weighted_ensembles.SimplePWCombine import m1, m2, m2_iter, bc
+from weighted_ensembles.predictions_evaluation import compute_acc_topk, compute_nll
 
 
 def load_npy_arr(file, device):
@@ -54,37 +57,80 @@ def load_networks_outputs(nn_outputs_path, experiment_out_path=None, device='cpu
             "networks": networks}
 
 
-def ens_train_save(predictors, targets, test_predictors, device, out_path, pwc_methods,
+class EnsOutputs:
+    def __init__(self, combining_methods, coupling_methods):
+        self.comb_m_ = combining_methods
+        self.coup_m_ = coupling_methods
+        self.outputs_ = [[None for cp_m in coupling_methods] for co_m in combining_methods]
+
+    def store(self, combining_method, coupling_method, output):
+        co_i = self.comb_m_.index(combining_method)
+        cp_i = self.coup_m_.index(coupling_method)
+        self.outputs_[co_i][cp_i] = output
+
+    def get(self, combining_method, coupling_method):
+        co_i = self.comb_m_.index(combining_method)
+        cp_i = self.coup_m_.index(coupling_method)
+        return self.outputs_[co_i][cp_i]
+
+
+def ens_train_save(predictors, targets, test_predictors, device, out_path, combining_methods, coupling_methods,
                    double_accuracy=False, prefix='', verbose=True, test_normality=True,
                    save_R_mats=False):
     dtp = torch.float64 if double_accuracy else torch.float32
-    ens = WeightedLDAEnsemble(predictors.shape[0], predictors.shape[2], device, dtp=dtp)
-    ens.fit_penultimate(predictors, targets, verbose=verbose, test_normality=test_normality)
+    ens_test_results = EnsOutputs(combining_methods, [co_m.__name__ for co_m in coupling_methods])
+    for co_mi, co_m in enumerate(combining_methods):
 
-    ens.save_coefs_csv(os.path.join(out_path, prefix + 'lda_coefs_{}.csv'.format("double" if double_accuracy else "float")))
-    ens.save_pvals(os.path.join(out_path, prefix + 'p_values_{}.npy'.format("double" if double_accuracy else "float")))
-    ens.save(os.path.join(out_path, prefix + 'model_{}'.format("double" if double_accuracy else "float")))
+        ens = WeightedLinearEnsemble(predictors.shape[0], predictors.shape[2], device, dtp=dtp)
+        ens.fit_penultimate(predictors, targets, verbose=verbose, test_normality=test_normality, linear_classifier=co_m)
 
-    ens_test_results = []
-    for m_i, pwc_method in enumerate(pwc_methods):
-        ens_test_out_method = ens.predict_proba(test_predictors, pwc_method, output_R=save_R_mats)
-        if save_R_mats:
-            ens_test_out_method, ens_test_R = ens_test_out_method
-            if m_i == 0:
-                np.save(os.path.join(out_path, "{}ens_test_R_{}.npy".format(prefix,
-                                                                   ("double" if double_accuracy else "float"))),
-                        ens_test_R.detach().cpu().numpy())
+        ens.save_coefs_csv(os.path.join(out_path, prefix + co_m + '_coefs_{}.csv'.format("double" if double_accuracy else "float")))
+        if co_m == "lda":
+            ens.save_pvals(os.path.join(out_path, prefix + 'p_values_{}.npy'.format("double" if double_accuracy else "float")))
+        ens.save(os.path.join(out_path, prefix + co_m + '_model_{}'.format("double" if double_accuracy else "float")))
 
-        ens_test_results.append(ens_test_out_method)
-        np.save(os.path.join(out_path,
-                             "{}ens_test_outputs_{}_{}.npy".format(prefix, pwc_method.__name__,
-                                                                   ("double" if double_accuracy else "float"))),
-                ens_test_out_method.detach().cpu().numpy())
+        for m_i, pwc_method in enumerate(coupling_methods):
+            fin = False
+            tries = 0
+            cur_b = test_predictors.shape[1]
+            while not fin and tries < 20 and cur_b > 0:
+                if tries > 0:
+                    torch.cuda.synchronize()
+                    torch.cuda.empty_cache()
+                    print('Trying again, try {}, batch size {}'.format(tries, cur_b))
+                try:
+                    ens_test_out_method = ens.predict_proba(test_predictors, pwc_method, output_R=save_R_mats,
+                                                            batch_size=cur_b)
+                    fin = True
+                except RuntimeError as rerr:
+                    if 'memory' not in str(rerr):
+                        raise rerr
+                    print("OOM Exception")
+                    del rerr
+                    cur_b = int(0.5 * cur_b)
+                    tries += 1
+
+            if not fin:
+                print('Unsuccessful')
+                return -1
+
+            if save_R_mats:
+                ens_test_out_method, ens_test_R = ens_test_out_method
+                if m_i == 0:
+                    np.save(os.path.join(out_path, "{}ens_test_R_co_{}_prec_{}.npy".format(prefix, co_m,
+                                                                       ("double" if double_accuracy else "float"))),
+                            ens_test_R.detach().cpu().numpy())
+
+            ens_test_results.store(co_m, pwc_method.__name__, ens_test_out_method)
+            np.save(os.path.join(out_path,
+                                 "{}ens_test_outputs_co_{}_cp_{}_prec_{}.npy".format(prefix, co_m, pwc_method.__name__,
+                                                                       ("double" if double_accuracy else "float"))),
+                    ens_test_out_method.detach().cpu().numpy())
 
     return ens_test_results
 
 
-def print_memory_statistics():
+def print_memory_statistics(list_tensors=False):
     allocated = torch.cuda.memory_allocated()
     max_allocated = torch.cuda.max_memory_allocated()
     reserved = torch.cuda.memory_reserved()
@@ -93,6 +139,14 @@ def print_memory_statistics():
     print("Allocated current: {:.3f}GB, max {:.3f}GB".format(allocated / 2**30, max_allocated / 2**30))
     print("Reserved current: {:.3f}GB, max {:.3f}GB".format(reserved / 2**30, max_reserved / 2**30))
 
+    if list_tensors:
+        for obj in gc.get_objects():
+            try:
+                if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
+                    print(type(obj), obj.size(), obj.device)
+            except:
+                pass
+
 
 def average_Rs(outputs_path, replications, folds=None, device="cuda"):
     train_types = ["train_training", "val_training"]
@@ -100,13 +154,14 @@ def average_Rs(outputs_path, replications, folds=None, device="cuda"):
     net_outputs_folder = "outputs"
     outputs_match = "ens_test_R_"
     if folds is None:
-        pattern = "^" + outputs_match + "(.*).npy$"
+        pattern = "^" + outputs_match + "co_(.*?)_prec_(.*?).npy$"
     else:
-        pattern = "^fold_\\d+_" + outputs_match + "(.*).npy$"
+        pattern = "^fold_\\d+_" + outputs_match + "co_(.*?)_prec_(.*?).npy$"
 
     files = os.listdir(os.path.join(outputs_path, "0", outputs_folder, train_types[0]))
     ptrn = re.compile(pattern)
-    precisions = list(set([re.search(ptrn, f).group(1) for f in files if re.search(ptrn, f) is not None]))
+    precisions = list(set([re.search(ptrn, f).group(2) for f in files if re.search(ptrn, f) is not None]))
+    combining_methods = list(set([re.search(ptrn, f).group(1) for f in files if re.search(ptrn, f) is not None]))
     net_outputs = load_networks_outputs(os.path.join(outputs_path, "0", net_outputs_folder), None, device)
     test_labels = net_outputs["test_labels"]
 
@@ -119,51 +174,59 @@ def average_Rs(outputs_path, replications, folds=None, device="cuda"):
         repli_list = []
         for repli in range(replications):
             print("Processing repli {}".format(repli))
-            prec_list = []
-            for prec in precisions:
-                if folds is None:
-                    file_name = outputs_match + prec + ".npy"
-                    file_path = os.path.join(outputs_path, str(repli), outputs_folder, tr_tp, file_name)
-                    R_mat = load_npy_arr(file_path, device)
-                    n, k, k = R_mat.shape
-
-                    class_mats = []
-                    for ci in range(k):
-                        class_mats.append(R_mat[labels_mask[ci]].unsqueeze(0))
-
-                    class_sep_R = torch.cat(class_mats, 0)
-
-                    mean_dim = [1]
-
-                else:
-                    fold_mats = []
-                    for foldi in range(folds):
-                        print("Processing fold {}".format(foldi))
-                        file_name = "fold_" + str(foldi) + "_" + outputs_match + prec + ".npy"
+            co_m_list = []
+            for co_m in combining_methods:
+                print("Processing combining method {}".format(co_m))
+                prec_list = []
+                for prec in precisions:
+                    if folds is None:
+                        file_name = outputs_match + "co_" + co_m + "_prec_" + prec + ".npy"
                         file_path = os.path.join(outputs_path, str(repli), outputs_folder, tr_tp, file_name)
                         R_mat = load_npy_arr(file_path, device)
-                        fold_mats.append(R_mat.unsqueeze(0))
+                        n, k, k = R_mat.shape
 
-                    R_mat = torch.cat(fold_mats, 0)
-                    f, n, k, k = R_mat.shape
-                    class_mats = []
-                    for ci in range(k):
-                        class_mats.append(R_mat[:, labels_mask[ci]].unsqueeze(1))
+                        class_mats = []
+                        for ci in range(k):
+                            class_mats.append(R_mat[labels_mask[ci]].unsqueeze(0))
 
-                    class_sep_R = torch.cat(class_mats, 1)
+                        class_sep_R = torch.cat(class_mats, 0)
 
-                    mean_dim = [0, 2]
+                        mean_dim = [1]
 
-                aggr_R = torch.mean(class_sep_R, mean_dim).unsqueeze(0)
-                prec_list.append(aggr_R)
+                    else:
+                        fold_mats = []
+                        for foldi in range(folds):
+                            print("Processing fold {}".format(foldi))
+                            file_name = "fold_" + str(foldi) + "_" + outputs_match + "co_" + co_m + "_prec_" + prec + ".npy"
+                            file_path = os.path.join(outputs_path, str(repli), outputs_folder, tr_tp, file_name)
+                            R_mat = load_npy_arr(file_path, device)
+                            fold_mats.append(R_mat.unsqueeze(0))
 
-            prec_mat = torch.cat(prec_list, 0).unsqueeze(0)
-            repli_list.append(prec_mat)
+                        R_mat = torch.cat(fold_mats, 0)
+                        f, n, k, k = R_mat.shape
+                        class_mats = []
+                        for ci in range(k):
+                            class_mats.append(R_mat[:, labels_mask[ci]].unsqueeze(1))
+
+                        class_sep_R = torch.cat(class_mats, 1)
+
+                        mean_dim = [0, 2]
+
+                    aggr_R = torch.mean(class_sep_R, mean_dim).unsqueeze(0)
+                    prec_list.append(aggr_R)
+
+                prec_mat = torch.cat(prec_list, 0).unsqueeze(0)
+                co_m_list.append(prec_mat)
+
+            co_m_mat = torch.cat(co_m_list, 0).unsqueeze(0)
+            repli_list.append(co_m_mat)
 
         repli_mat = torch.cat(repli_list, 0)
         repli_aggr = torch.mean(repli_mat, 0)
 
         np.save(os.path.join(outputs_path, tr_tp + "_class_aggr_R.npy"), repli_aggr.cpu().numpy())
+        combining_methods_pd = pd.DataFrame(combining_methods)
+        combining_methods_pd.to_csv(os.path.join(outputs_path, "R_mat_co_m_names.csv"), index=False, header=False)
 
 
 def compute_pairwise_accuracies(preds, labs):
@@ -265,5 +328,26 @@ def get_irrelevant_predictions(R_mat, labs):
 
     return df
 
+
+def test_model(model_path, test_inputs_path):
+    device = "cuda"
+    co_ms = [m1, m2, m2_iter, bc]
+    networks = os.listdir(test_inputs_path)
+
+    test_outputs = []
+    for net in networks:
+        test_outputs.append(load_npy_arr(os.path.join(test_inputs_path, net, 'test_outputs.npy'), device).
+                            unsqueeze(0))
+    test_outputs = torch.cat(test_outputs, 0)
+    test_labels = load_npy_arr(os.path.join(test_inputs_path, networks[0], 'test_labels.npy'), device)
+
+    ens = WeightedLinearEnsemble(test_outputs.shape[0], test_outputs.shape[2], device=device)
+    ens.load(model_path)
+
+    for co_m in co_ms:
+        co_m_pred = ens.predict_proba(test_outputs, co_m)
+        acc = compute_acc_topk(test_labels, co_m_pred, 1)
+        nll = compute_nll(test_labels, co_m_pred)
+        print("Method {}, accuracy: {}, nll: {}".format(co_m.__name__, acc, nll))
 
 

@@ -23,18 +23,21 @@ def pairwise_accuracies():
 
     outputs_match = "ens_test_R_"
     if args.folds == 1:
-        pattern = "^" + outputs_match + "(.*).npy$"
+        pattern = "^" + outputs_match + "co_(.*?)_prec_(.*?).npy$"
     else:
-        pattern = "^fold_\\d+_" + outputs_match + "(.*).npy$"
+        pattern = "^fold_\\d+_" + outputs_match + "co_(.*?)_prec_(.*?).npy$"
 
-    df_ens = pd.DataFrame(columns=('repli', 'fold', 'train_set', 'precision', 'class1', 'class2', 'accuracy'))
+    df_ens = pd.DataFrame(columns=('repli', 'fold', 'train_set', 'precision',
+                                   'combining_method', 'class1', 'class2', 'accuracy'))
 
     df_net = pd.DataFrame(columns=("repli", "network", 'class1', 'class2', "accuracy"))
 
-    df_ens_cal = pd.DataFrame(columns=('repli', 'fold', 'train_set', 'precision', 'class1', 'class2',
+    df_ens_cal = pd.DataFrame(columns=('repli', 'fold', 'train_set', 'precision',
+                                       'combining_method', 'class1', 'class2',
                                        'conf_min', 'conf_max', 'bin_accuracy', 'bin_count'))
 
-    df_ens_irrel = pd.DataFrame(columns=('repli', 'fold', 'train_set', 'precision', 'class1', 'class2',
+    df_ens_irrel = pd.DataFrame(columns=('repli', 'fold', 'train_set', 'precision',
+                                         'combining_method', 'class1', 'class2',
                                          'pred1', 'pred2'))
 
     for repli in range(args.repl):
@@ -55,65 +58,73 @@ def pairwise_accuracies():
 
         files = os.listdir(os.path.join(ens_outputs_path, train_types[0]))
         ptrn = re.compile(pattern)
+        combining_methods = list(set([re.search(ptrn, f).group(0) for f in files if re.search(ptrn, f) is not None]))
         precisions = list(set([re.search(ptrn, f).group(1) for f in files if re.search(ptrn, f) is not None]))
 
         for tr_tp in train_types:
             print("Processing train type {}".format(tr_tp))
 
-            for prec in precisions:
-                if args.folds == 1:
-                    file_name = outputs_match + prec + ".npy"
-                    file_path = os.path.join(ens_outputs_path, tr_tp, file_name)
-                    R_mat = load_npy_arr(file_path, args.device)
-                    df = compute_pairwise_accuracies(R_mat, labs)
-                    df["repli"] = repli
-                    df["fold"] = 0
-                    df["train_set"] = tr_tp
-                    df["precision"] = prec
-                    df_ens = pd.concat([df_ens, df])
-
-                    df_cal = compute_pairwise_calibration(R_mat, labs)
-                    df_cal["repli"] = repli
-                    df_cal["fold"] = 0
-                    df_cal["train_set"] = tr_tp
-                    df_cal["precision"] = prec
-                    df_ens_cal = pd.concat([df_ens_cal, df_cal])
-
-                    if args.comp_irrel:
-                        df_irrel = get_irrelevant_predictions(R_mat, labs)
-                        df_irrel["repli"] = repli
-                        df_irrel["fold"] = 0
-                        df_irrel["train_set"] = tr_tp
-                        df_irrel["precision"] = prec
-                        df_ens_irrel = pd.concat([df_ens_irrel, df_irrel])
-
-                else:
-                    for foldi in range(args.folds):
-                        print("Processing fold {}".format(foldi))
-                        file_name = "fold_" + str(foldi) + "_" + outputs_match + prec + ".npy"
+            for co_m in combining_methods:
+                for prec in precisions:
+                    if args.folds == 1:
+                        file_name = "{}_co_{}_prec_{}.npy".format(outputs_match, co_m, prec)
                         file_path = os.path.join(ens_outputs_path, tr_tp, file_name)
                         R_mat = load_npy_arr(file_path, args.device)
                         df = compute_pairwise_accuracies(R_mat, labs)
                         df["repli"] = repli
-                        df["fold"] = foldi
+                        df["fold"] = 0
                         df["train_set"] = tr_tp
                         df["precision"] = prec
+                        df["combining_method"] = co_m
                         df_ens = pd.concat([df_ens, df])
 
                         df_cal = compute_pairwise_calibration(R_mat, labs)
                         df_cal["repli"] = repli
-                        df_cal["fold"] = foldi
+                        df_cal["fold"] = 0
                         df_cal["train_set"] = tr_tp
                         df_cal["precision"] = prec
+                        df_cal["combining_method"] = co_m
                         df_ens_cal = pd.concat([df_ens_cal, df_cal])
 
                         if args.comp_irrel:
                             df_irrel = get_irrelevant_predictions(R_mat, labs)
                             df_irrel["repli"] = repli
-                            df_irrel["fold"] = foldi
+                            df_irrel["fold"] = 0
                             df_irrel["train_set"] = tr_tp
                             df_irrel["precision"] = prec
+                            df_irrel["combining_method"] = co_m
                             df_ens_irrel = pd.concat([df_ens_irrel, df_irrel])
+
+                    else:
+                        for foldi in range(args.folds):
+                            print("Processing fold {}".format(foldi))
+                            file_name = "fold_{}_{}_co_{}_prec_{}.npy".format(foldi, outputs_match, co_m, prec)
+                            file_path = os.path.join(ens_outputs_path, tr_tp, file_name)
+                            R_mat = load_npy_arr(file_path, args.device)
+                            df = compute_pairwise_accuracies(R_mat, labs)
+                            df["repli"] = repli
+                            df["fold"] = foldi
+                            df["train_set"] = tr_tp
+                            df["precision"] = prec
+                            df["combining_method"] = co_m
+                            df_ens = pd.concat([df_ens, df])
+
+                            df_cal = compute_pairwise_calibration(R_mat, labs)
+                            df_cal["repli"] = repli
+                            df_cal["fold"] = foldi
+                            df_cal["train_set"] = tr_tp
+                            df_cal["precision"] = prec
+                            df_cal["combining_method"] = co_m
+                            df_ens_cal = pd.concat([df_ens_cal, df_cal])
+
+                            if args.comp_irrel:
+                                df_irrel = get_irrelevant_predictions(R_mat, labs)
+                                df_irrel["repli"] = repli
+                                df_irrel["fold"] = foldi
+                                df_irrel["train_set"] = tr_tp
+                                df_irrel["precision"] = prec
+                                df_irrel["combining_method"] = co_m
+                                df_ens_irrel = pd.concat([df_ens_irrel, df_irrel])
 
     df_ens.to_csv(os.path.join(args.folder, 'ensemble_pw_accuracies.csv'), index=False)
     df_net.to_csv(os.path.join(args.folder, "net_pw_accuracies.csv"), index=False)
