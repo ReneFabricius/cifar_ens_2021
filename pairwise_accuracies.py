@@ -58,8 +58,8 @@ def pairwise_accuracies():
 
         files = os.listdir(os.path.join(ens_outputs_path, train_types[0]))
         ptrn = re.compile(pattern)
-        combining_methods = list(set([re.search(ptrn, f).group(0) for f in files if re.search(ptrn, f) is not None]))
-        precisions = list(set([re.search(ptrn, f).group(1) for f in files if re.search(ptrn, f) is not None]))
+        combining_methods = list(set([re.search(ptrn, f).group(1) for f in files if re.search(ptrn, f) is not None]))
+        precisions = list(set([re.search(ptrn, f).group(2) for f in files if re.search(ptrn, f) is not None]))
 
         for tr_tp in train_types:
             print("Processing train type {}".format(tr_tp))
@@ -67,7 +67,7 @@ def pairwise_accuracies():
             for co_m in combining_methods:
                 for prec in precisions:
                     if args.folds == 1:
-                        file_name = "{}_co_{}_prec_{}.npy".format(outputs_match, co_m, prec)
+                        file_name = "{}co_{}_prec_{}.npy".format(outputs_match, co_m, prec)
                         file_path = os.path.join(ens_outputs_path, tr_tp, file_name)
                         R_mat = load_npy_arr(file_path, args.device)
                         df = compute_pairwise_accuracies(R_mat, labs)
@@ -98,7 +98,7 @@ def pairwise_accuracies():
                     else:
                         for foldi in range(args.folds):
                             print("Processing fold {}".format(foldi))
-                            file_name = "fold_{}_{}_co_{}_prec_{}.npy".format(foldi, outputs_match, co_m, prec)
+                            file_name = "fold_{}_{}co_{}_prec_{}.npy".format(foldi, outputs_match, co_m, prec)
                             file_path = os.path.join(ens_outputs_path, tr_tp, file_name)
                             R_mat = load_npy_arr(file_path, args.device)
                             df = compute_pairwise_accuracies(R_mat, labs)
