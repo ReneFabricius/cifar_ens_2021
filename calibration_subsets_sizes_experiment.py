@@ -21,6 +21,8 @@ def ens_train_exp():
     parser.add_argument('-folder', type=str, required=True, help='replication_folder')
     parser.add_argument('-max_fold_rep', type=int, default=30, help='max number of folds for each train size')
     parser.add_argument('-device', type=str, default='cpu', help='device on which to execute the script')
+    parser.add_argument('-calibration_set', type=str, default='train',
+                        help='Set from which to pick data for calibration. Can be train or val.')
     args = parser.parse_args()
 
     exper_outputs_path = os.path.join(args.folder, EXP_OUTPUTS_FOLDER)
@@ -40,7 +42,7 @@ def ens_train_exp():
                         tar=net_outputs["test_labels"])
         df_net.loc[i] = [net, acc, nll, ece]
 
-    df_net.to_csv(os.path.join(exper_outputs_path, "net_metrics.csv"), index=False)
+    df_net.to_csv(os.path.join(exper_outputs_path, "net_metrics_" + args.calibration_set + ".csv"), index=False)
 
     df_ens = pd.DataFrame(columns=("calibrating_method", "train_size", "accuracy", "nll", "ece"))
     df_ens_i = 0
@@ -54,8 +56,17 @@ def ens_train_exp():
     df_net_cal = pd.DataFrame(columns=("network", "calibration_method", "train_size", "nll", "ece"))
     df_net_i = 0
 
-    n_samples = net_outputs["train_labels"].shape[0]
-    min_t_size = 80
+    if args.calibration_set == "train":
+        cal_labels = net_outputs["train_labels"]
+        cal_outputs = net_outputs["train_outputs"]
+
+    elif args.calibration_set == "val":
+        cal_labels = net_outputs["val_labels"]
+        cal_outputs = net_outputs["val_outputs"]
+
+    n_samples = cal_labels.shape[0]
+
+    min_t_size = 100
     max_t_size = 4950
     quot = 1.4
     cur_t_size = min_t_size
@@ -66,7 +77,7 @@ def ens_train_exp():
         skf = StratifiedKFold(n_splits=n_folds, shuffle=True)
 
         for fold_i, (_, comb_train_idxs) in enumerate(skf.split(np.zeros(n_samples),
-                                                        net_outputs["train_labels"].detach().cpu().clone().numpy())):
+                                                                cal_labels.detach().cpu().numpy())):
             if fold_i >= args.max_fold_rep:
                 break
 
@@ -74,17 +85,17 @@ def ens_train_exp():
 
             print("Processing fold {}".format(fold_i))
             print("Real train size {}".format(real_t_size))
-            np.save(os.path.join(exper_outputs_path, "combiner_train_idx_size_{}_repl_{}.npy".format(cur_t_size, fold_i)),
+            np.save(os.path.join(exper_outputs_path, "cal_set_{}_combiner_train_idx_size_{}_repl_{}.npy".format(args.calibration_set, cur_t_size, fold_i)),
                     comb_train_idxs)
             comb_train_idxs = torch.from_numpy(comb_train_idxs).to(device=torch.device(args.device), dtype=torch.long)
-            comb_train_pred = net_outputs["train_outputs"][:, comb_train_idxs, :]
-            comb_train_lab = net_outputs["train_labels"][comb_train_idxs]
+            comb_train_pred = cal_outputs[:, comb_train_idxs, :]
+            comb_train_lab = cal_labels[comb_train_idxs]
 
             test_ens_results = calibrating_ens_train_save(predictors=comb_train_pred, targets=comb_train_lab,
                                                           test_predictors=net_outputs["test_outputs"],
                                                           device=torch.device(args.device), out_path=exper_outputs_path,
                                                           calibrating_methods=calibration_methods,
-                                                          prefix="size_{}_repl_{}_".format(real_t_size, fold_i))
+                                                          prefix="cal_set_{}_size_{}_repl_{}_".format(args.calibration_set, real_t_size, fold_i))
 
             for cal_m in calibration_methods:
                 test_ens_res = test_ens_results.get(calibrating_method=cal_m.__name__)
@@ -104,8 +115,8 @@ def ens_train_exp():
 
         cur_t_size = int(quot * cur_t_size)
 
-    df_ens.to_csv(os.path.join(exper_outputs_path, 'ens_metrics.csv'), index=False)
-    df_net_cal.to_csv(os.path.join(exper_outputs_path, 'net_cal_metrics.csv'), index=False)
+    df_ens.to_csv(os.path.join(exper_outputs_path, 'ens_metrics_' + args.calibration_set + '.csv'), index=False)
+    df_net_cal.to_csv(os.path.join(exper_outputs_path, 'net_cal_metrics_' + args.calibration_set + '.csv'), index=False)
 
 
 if __name__ == '__main__':
