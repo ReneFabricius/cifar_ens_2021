@@ -9,7 +9,7 @@ from weighted_ensembles.SimplePWCombine import m1, m2, bc, m2_iter
 
 import torch
 
-from utils import load_networks_outputs, load_npy_arr, ens_train_save
+from utils import load_networks_outputs, load_npy_arr, linear_pw_ens_train_save
 
 TRAIN_OUTPUTS_FOLDER = 'exp_subsets_train_outputs'
 
@@ -58,12 +58,12 @@ def ens_train_exp():
 
         data_type = ["float", "double"]
         for dtype in data_type:
-            test_ens_results = ens_train_save(predictors=lda_train_pred, targets=lda_train_lab,
-                                              test_predictors=net_outputs["test_outputs"],
-                                              device=torch.device(args.device), out_path=exper_outputs_path,
-                                              combining_methods=combining_methods,
-                                              coupling_methods=coupling_methods, prefix=(str(fold_i) + "_"),
-                                              double_accuracy=(dtype == "double"))
+            test_ens_results = linear_pw_ens_train_save(predictors=lda_train_pred, targets=lda_train_lab,
+                                                        test_predictors=net_outputs["test_outputs"],
+                                                        device=torch.device(args.device), out_path=exper_outputs_path,
+                                                        combining_methods=combining_methods,
+                                                        coupling_methods=coupling_methods, prefix=(str(fold_i) + "_"),
+                                                        double_accuracy=(dtype == "double"))
 
             for co_m in combining_methods:
                 for cp_m in [cp.__name__ for cp in coupling_methods]:

@@ -9,7 +9,7 @@ from weighted_ensembles.SimplePWCombine import m1, m2, bc, m2_iter
 
 import torch
 
-from utils import load_networks_outputs, load_npy_arr, ens_train_save
+from utils import load_networks_outputs, load_npy_arr, linear_pw_ens_train_save
 
 EXP_OUTPUTS_FOLDER = 'exp_subsets_sizes_train_outputs'
 
@@ -70,12 +70,12 @@ def ens_train_exp():
             comb_train_pred = net_outputs["train_outputs"][:, comb_train_idxs, :]
             comb_train_lab = net_outputs["train_labels"][comb_train_idxs]
 
-            test_ens_results = ens_train_save(predictors=comb_train_pred, targets=comb_train_lab,
-                                              test_predictors=net_outputs["test_outputs"],
-                                              device=torch.device(args.device), out_path=exper_outputs_path,
-                                              combining_methods=combining_methods,
-                                              coupling_methods=coupling_methods,
-                                              prefix="size_{}_repl_{}_".format(real_t_size, fold_i))
+            test_ens_results = linear_pw_ens_train_save(predictors=comb_train_pred, targets=comb_train_lab,
+                                                        test_predictors=net_outputs["test_outputs"],
+                                                        device=torch.device(args.device), out_path=exper_outputs_path,
+                                                        combining_methods=combining_methods,
+                                                        coupling_methods=coupling_methods,
+                                                        prefix="size_{}_repl_{}_".format(real_t_size, fold_i))
 
             for co_m in combining_methods:
                 for cp_m in [cp.__name__ for cp in coupling_methods]:

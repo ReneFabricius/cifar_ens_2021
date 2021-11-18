@@ -10,7 +10,7 @@ from sklearn.model_selection import train_test_split
 from weighted_ensembles.predictions_evaluation import compute_acc_topk, compute_nll
 from weighted_ensembles.SimplePWCombine import m1, m2, bc, m2_iter
 
-from utils import ens_train_save, load_networks_outputs
+from utils import linear_pw_ens_train_save, load_networks_outputs
 
 ENS_OUTPUTS_FOLDER = 'comb_outputs'
 TRAIN_TRAIN = 'train_training'
@@ -72,18 +72,18 @@ def ens_exp():
         lda_train_outputs = net_outputs["train_outputs"][:, lda_train_idx, :]
         lda_train_labels = net_outputs["train_labels"][lda_train_idx]
 
-        vt_test_ens_results = ens_train_save(net_outputs["val_outputs"], net_outputs["val_labels"],
-                                             net_outputs["test_outputs"],
-                                             torch.device(args.device),
-                                             vt_out_path, combining_methods=combining_methods,
-                                             coupling_methods=coupling_methods,
-                                             save_R_mats=args.save_R)
+        vt_test_ens_results = linear_pw_ens_train_save(net_outputs["val_outputs"], net_outputs["val_labels"],
+                                                       net_outputs["test_outputs"],
+                                                       torch.device(args.device),
+                                                       vt_out_path, combining_methods=combining_methods,
+                                                       coupling_methods=coupling_methods,
+                                                       save_R_mats=args.save_R)
 
-        tt_test_ens_results = ens_train_save(lda_train_outputs, lda_train_labels, net_outputs["test_outputs"],
-                                             torch.device(args.device),
-                                             tt_out_path, combining_methods=combining_methods,
-                                             coupling_methods=coupling_methods,
-                                             save_R_mats=args.save_R)
+        tt_test_ens_results = linear_pw_ens_train_save(lda_train_outputs, lda_train_labels, net_outputs["test_outputs"],
+                                                       torch.device(args.device),
+                                                       tt_out_path, combining_methods=combining_methods,
+                                                       coupling_methods=coupling_methods,
+                                                       save_R_mats=args.save_R)
 
         for co_m in combining_methods:
             for cp_m in [cp.__name__ for cp in coupling_methods]:

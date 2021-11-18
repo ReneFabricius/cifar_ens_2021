@@ -8,6 +8,7 @@ import gc
 from weighted_ensembles.WeightedLinearEnsemble import WeightedLinearEnsemble
 from weighted_ensembles.SimplePWCombine import m1, m2, m2_iter, bc
 from weighted_ensembles.predictions_evaluation import compute_acc_topk, compute_nll
+from weighted_ensembles.CalibrationEnsemble import CalibrationEnsemble
 
 
 def load_npy_arr(file, device):
@@ -57,7 +58,7 @@ def load_networks_outputs(nn_outputs_path, experiment_out_path=None, device='cpu
             "networks": networks}
 
 
-class EnsOutputs:
+class LinearPWEnsOutputs:
     def __init__(self, combining_methods, coupling_methods):
         self.comb_m_ = combining_methods
         self.coup_m_ = coupling_methods
@@ -74,19 +75,43 @@ class EnsOutputs:
         return self.outputs_[co_i][cp_i]
 
 
-def ens_train_save(predictors, targets, test_predictors, device, out_path, combining_methods, coupling_methods,
-                   double_accuracy=False, prefix='', verbose=True, test_normality=True,
-                   save_R_mats=False):
+class CalibratingEnsOutputs:
+    def __init__(self, calibrating_methods, networks_n):
+        self.cal_m_ = calibrating_methods
+        self.net_n_ = networks_n
+        self.ens_outputs_ = [None for cal_m in calibrating_methods]
+        self.net_outputs_ = [None for cal_m in calibrating_methods]
+
+    def store(self, calibrating_method, ens_output, nets_outputs):
+        cal_i = self.cal_m_.index(calibrating_method)
+        self.ens_outputs_[cal_i] = ens_output
+        self.net_outputs_[cal_i] = nets_outputs
+
+    def get(self, calibrating_method):
+        cal_i = self.cal_m_.index(calibrating_method)
+        return self.ens_outputs_[cal_i]
+
+    def get_nets(self, calibrating_method):
+        cal_i = self.cal_m_.index(calibrating_method)
+        return self.net_outputs_[cal_i]
+
+
+def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_path, combining_methods,
+                             coupling_methods,
+                             double_accuracy=False, prefix='', verbose=True, test_normality=True,
+                             save_R_mats=False):
     dtp = torch.float64 if double_accuracy else torch.float32
-    ens_test_results = EnsOutputs(combining_methods, [co_m.__name__ for co_m in coupling_methods])
+    ens_test_results = LinearPWEnsOutputs(combining_methods, [co_m.__name__ for co_m in coupling_methods])
     for co_mi, co_m in enumerate(combining_methods):
 
         ens = WeightedLinearEnsemble(predictors.shape[0], predictors.shape[2], device, dtp=dtp)
         ens.fit_penultimate(predictors, targets, verbose=verbose, test_normality=test_normality, linear_classifier=co_m)
 
-        ens.save_coefs_csv(os.path.join(out_path, prefix + co_m + '_coefs_{}.csv'.format("double" if double_accuracy else "float")))
+        ens.save_coefs_csv(
+            os.path.join(out_path, prefix + co_m + '_coefs_{}.csv'.format("double" if double_accuracy else "float")))
         if co_m == "lda":
-            ens.save_pvals(os.path.join(out_path, prefix + 'p_values_{}.npy'.format("double" if double_accuracy else "float")))
+            ens.save_pvals(
+                os.path.join(out_path, prefix + 'p_values_{}.npy'.format("double" if double_accuracy else "float")))
         ens.save(os.path.join(out_path, prefix + co_m + '_model_{}'.format("double" if double_accuracy else "float")))
 
         for m_i, pwc_method in enumerate(coupling_methods):
@@ -118,14 +143,60 @@ def ens_train_save(predictors, targets, test_predictors, device, out_path, combi
                 ens_test_out_method, ens_test_R = ens_test_out_method
                 if m_i == 0:
                     np.save(os.path.join(out_path, "{}ens_test_R_co_{}_prec_{}.npy".format(prefix, co_m,
-                                                                       ("double" if double_accuracy else "float"))),
+                                                                                           (
+                                                                                               "double" if double_accuracy else "float"))),
                             ens_test_R.detach().cpu().numpy())
 
             ens_test_results.store(co_m, pwc_method.__name__, ens_test_out_method)
             np.save(os.path.join(out_path,
                                  "{}ens_test_outputs_co_{}_cp_{}_prec_{}.npy".format(prefix, co_m, pwc_method.__name__,
-                                                                       ("double" if double_accuracy else "float"))),
+                                                                                     (
+                                                                                         "double" if double_accuracy else "float"))),
                     ens_test_out_method.detach().cpu().numpy())
+
+    return ens_test_results
+
+
+def calibrating_ens_train_save(predictors, targets, test_predictors, device, out_path, calibrating_methods,
+                               double_accuracy=False, prefix='', verbose=True):
+    """
+
+    :param predictors: Penultimate layer outputs or logits to train ensemble on.
+    :param targets: Correct labels for predictors.
+    :param test_predictors: Penultimate layer outputs or logits to test ensemble on.
+    :param device: Torch device to use.
+    :param out_path: Path to folder for saving outputs.
+    :param calibrating_methods: Calibrating methods to use.
+    :param double_accuracy: Whether to use double accuracy.
+    :param prefix: Prefix for file names of saved outputs.
+    :param verbose: Whether to print detailed info.
+    :return: CalibratingEnsOutput instance with ensemble and calibrated networks outputs.
+    """
+    dtp = torch.float64 if double_accuracy else torch.float32
+    ens_test_results = CalibratingEnsOutputs(calibrating_methods=[cal_m.__name__ for cal_m in calibrating_methods],
+                                             networks_n=predictors.shape[0])
+    for cal_mi, cal_m in enumerate(calibrating_methods):
+        ens = CalibrationEnsemble(c=predictors.shape[0], k=predictors.shape[2], device=device, dtp=dtp)
+        ens.fit(MP=predictors, tar=targets, calibration_method=cal_m, verbose=verbose)
+
+        ens.save_coefs_csv(
+            os.path.join(out_path,
+                         prefix + cal_m.__name__ + '_coefs_{}.csv'.format("double" if double_accuracy else "float")))
+
+        ens.save(os.path.join(out_path,
+                              prefix + cal_m.__name__ + '_model_{}'.format("double" if double_accuracy else "float")))
+
+        ens_m_out, net_m_out = ens.predict_proba(MP=test_predictors, output_net_preds=True)
+
+        ens_test_results.store(calibrating_method=cal_m.__name__, ens_output=ens_m_out, nets_outputs=net_m_out)
+        np.save(os.path.join(out_path,
+                             "{}ens_test_outputs_cal_{}_prec_{}.npy".format(prefix, cal_m.__name__,
+                                                                            "double" if double_accuracy else "float")),
+                ens_m_out.detach().cpu().numpy())
+        np.save(os.path.join(out_path,
+                             "{}nets_cal_test_outputs_cal_{}_prec_{}.npy".format(prefix, cal_m.__name__,
+                                                                                 "double" if double_accuracy else "float")),
+                net_m_out.detach().cpu().numpy())
 
     return ens_test_results
 
@@ -136,8 +207,8 @@ def print_memory_statistics(list_tensors=False):
     reserved = torch.cuda.memory_reserved()
     max_reserved = torch.cuda.max_memory_reserved()
 
-    print("Allocated current: {:.3f}GB, max {:.3f}GB".format(allocated / 2**30, max_allocated / 2**30))
-    print("Reserved current: {:.3f}GB, max {:.3f}GB".format(reserved / 2**30, max_reserved / 2**30))
+    print("Allocated current: {:.3f}GB, max {:.3f}GB".format(allocated / 2 ** 30, max_allocated / 2 ** 30))
+    print("Reserved current: {:.3f}GB, max {:.3f}GB".format(reserved / 2 ** 30, max_reserved / 2 ** 30))
 
     if list_tensors:
         for obj in gc.get_objects():
@@ -197,7 +268,8 @@ def average_Rs(outputs_path, replications, folds=None, device="cuda"):
                         fold_mats = []
                         for foldi in range(folds):
                             print("Processing fold {}".format(foldi))
-                            file_name = "fold_" + str(foldi) + "_" + outputs_match + "co_" + co_m + "_prec_" + prec + ".npy"
+                            file_name = "fold_" + str(
+                                foldi) + "_" + outputs_match + "co_" + co_m + "_prec_" + prec + ".npy"
                             file_path = os.path.join(outputs_path, str(repli), outputs_folder, tr_tp, file_name)
                             R_mat = load_npy_arr(file_path, device)
                             fold_mats.append(R_mat.unsqueeze(0))
@@ -321,7 +393,7 @@ def get_irrelevant_predictions(R_mat, labs):
             irrel_count = torch.sum(sample_mask_inv)
             c1_irrelev_preds = R_mat[sample_mask_inv, :, :][:, c1, c2]
             c2_irrelev_preds = R_mat[sample_mask_inv, :, :][:, c2, c1]
-            cur_df = pd.DataFrame(data={"class1": [c1]*irrel_count, "class2": [c2]*irrel_count,
+            cur_df = pd.DataFrame(data={"class1": [c1] * irrel_count, "class2": [c2] * irrel_count,
                                         "pred1": c1_irrelev_preds.tolist(),
                                         "pred2": c2_irrelev_preds.tolist()})
             df = pd.concat([df, cur_df])
@@ -349,5 +421,3 @@ def test_model(model_path, test_inputs_path):
         acc = compute_acc_topk(test_labels, co_m_pred, 1)
         nll = compute_nll(test_labels, co_m_pred)
         print("Method {}, accuracy: {}, nll: {}".format(co_m.__name__, acc, nll))
-
-

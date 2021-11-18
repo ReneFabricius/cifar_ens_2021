@@ -10,7 +10,7 @@ from sklearn.model_selection import StratifiedKFold
 from weighted_ensembles.predictions_evaluation import compute_acc_topk, compute_nll
 from weighted_ensembles.SimplePWCombine import m1, m2, bc, m2_iter
 
-from utils import ens_train_save, load_networks_outputs, print_memory_statistics
+from utils import linear_pw_ens_train_save, load_networks_outputs, print_memory_statistics
 
 ENS_OUTPUTS_FOLDER = 'comb_outputs'
 TRAIN_TRAIN = 'train_training'
@@ -112,13 +112,13 @@ def ens_exp():
                 print("Memory before ensembling")
                 print_memory_statistics()
 
-                fold_ens_results = ens_train_save(predictors=fold_pred, targets=fold_lab,
-                                                  test_predictors=net_outputs["test_outputs"], device=torch_dev,
-                                                  out_path=par["out_fold"],
-                                                  combining_methods=combining_methods,
-                                                  coupling_methods=coupling_methods, prefix="fold_{}_".format(fold_i),
-                                                  verbose=False, test_normality=False,
-                                                  save_R_mats=args.save_R)
+                fold_ens_results = linear_pw_ens_train_save(predictors=fold_pred, targets=fold_lab,
+                                                            test_predictors=net_outputs["test_outputs"], device=torch_dev,
+                                                            out_path=par["out_fold"],
+                                                            combining_methods=combining_methods,
+                                                            coupling_methods=coupling_methods, prefix="fold_{}_".format(fold_i),
+                                                            verbose=False, test_normality=False,
+                                                            save_R_mats=args.save_R)
 
                 for co_m in combining_methods:
                     for cp_m in [cp.__name__ for cp in coupling_methods]:
