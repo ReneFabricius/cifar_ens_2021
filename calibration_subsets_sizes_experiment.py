@@ -23,6 +23,9 @@ def ens_train_exp():
     parser.add_argument('-device', type=str, default='cpu', help='device on which to execute the script')
     parser.add_argument('-calibration_set', type=str, default='train',
                         help='Set from which to pick data for calibration. Can be train or val.')
+    parser.add_argument('-verbosity', type=int, default='0',
+                        help='Value greater than 0 enables detailed progress info. '
+                             'May increase computational requirements')
     args = parser.parse_args()
 
     exper_outputs_path = os.path.join(args.folder, EXP_OUTPUTS_FOLDER)
@@ -95,7 +98,8 @@ def ens_train_exp():
                                                           test_predictors=net_outputs["test_outputs"],
                                                           device=torch.device(args.device), out_path=exper_outputs_path,
                                                           calibrating_methods=calibration_methods,
-                                                          prefix="cal_set_{}_size_{}_repl_{}_".format(args.calibration_set, real_t_size, fold_i))
+                                                          prefix="cal_set_{}_size_{}_repl_{}_".format(args.calibration_set, real_t_size, fold_i),
+                                                          verbose=args.verbosity > 0)
 
             for cal_m in calibration_methods:
                 test_ens_res = test_ens_results.get(calibrating_method=cal_m.__name__)
