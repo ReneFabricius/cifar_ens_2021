@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import StratifiedKFold
 
-from weighted_ensembles.predictions_evaluation import compute_acc_topk, compute_nll
-from weighted_ensembles.SimplePWCombine import m1, m2, bc, m2_iter
+from weensembles.predictions_evaluation import compute_acc_topk, compute_nll
+from weensembles.SimplePWCombine import m1, m2, bc, m2_iter
 
 import torch
 

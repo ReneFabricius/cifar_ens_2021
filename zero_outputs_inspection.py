@@ -4,8 +4,8 @@ import os
 
 from utils import load_networks_outputs, load_npy_arr
 
-from weighted_ensembles.SimplePWCombine import m1
-from weighted_ensembles.WeightedLDAEnsemble import WeightedLDAEnsemble
+from weensembles.SimplePWCombine import m1
+from weensembles.WeightedLDAEnsemble import WeightedLDAEnsemble
 
 
 def zero_outputs_inspection():

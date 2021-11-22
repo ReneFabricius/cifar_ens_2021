@@ -5,10 +5,10 @@ import torch
 import regex as re
 import gc
 
-from weighted_ensembles.WeightedLinearEnsemble import WeightedLinearEnsemble
-from weighted_ensembles.SimplePWCombine import m1, m2, m2_iter, bc
-from weighted_ensembles.predictions_evaluation import compute_acc_topk, compute_nll
-from weighted_ensembles.CalibrationEnsemble import CalibrationEnsemble
+from weensembles.WeightedLinearEnsemble import WeightedLinearEnsemble
+from weensembles.SimplePWCombine import m1, m2, m2_iter, bc
+from weensembles.predictions_evaluation import compute_acc_topk, compute_nll
+from weensembles.CalibrationEnsemble import CalibrationEnsemble
 
 
 def load_npy_arr(file, device):

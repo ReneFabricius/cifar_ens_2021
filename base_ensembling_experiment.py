@@ -7,8 +7,8 @@ import pandas as pd
 import torch
 from sklearn.model_selection import train_test_split
 
-from weighted_ensembles.predictions_evaluation import compute_acc_topk, compute_nll
-from weighted_ensembles.SimplePWCombine import m1, m2, bc, m2_iter
+from weensembles.predictions_evaluation import compute_acc_topk, compute_nll
+from weensembles.SimplePWCombine import m1, m2, bc, m2_iter
 
 from utils import linear_pw_ens_train_save, load_networks_outputs
 

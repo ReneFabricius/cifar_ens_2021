@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import StratifiedKFold
 
-from weighted_ensembles.predictions_evaluation import compute_acc_topk, compute_nll, ECE_sweep
-from weighted_ensembles.CalibrationMethod import TemperatureScaling
+from weensembles.predictions_evaluation import compute_acc_topk, compute_nll, ECE_sweep
+from weensembles.CalibrationMethod import TemperatureScaling
 
 import torch
 
