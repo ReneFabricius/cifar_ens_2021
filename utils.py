@@ -24,7 +24,7 @@ def load_networks_outputs(nn_outputs_path, experiment_out_path=None, device='cpu
     :param device: device to use
     :return: dictionary with network outputs and labels
     """
-    networks = os.listdir(nn_outputs_path)
+    networks = [fold for fold in os.listdir(nn_outputs_path) if os.path.isdir(os.path.join(nn_outputs_path, fold))]
 
     if experiment_out_path is not None:
         networks_order = open(os.path.join(experiment_out_path, 'networks_order.txt'), 'w')
@@ -421,3 +421,43 @@ def test_model(model_path, test_inputs_path):
         acc = compute_acc_topk(test_labels, co_m_pred, 1)
         nll = compute_nll(test_labels, co_m_pred)
         print("Method {}, accuracy: {}, nll: {}".format(co_m.__name__, acc, nll))
+        
+
+def compute_calibration_plot(prob_pred, labs, bin_n=10, softmax=False):
+    """
+    Computes calibration plot for the predictions. Plot will have specified number of bins.
+    Args:
+        preds (torch tensor): Predictions of the classifier. Torch tensor of the shape samples × classes.
+        labs (torch tensor): Correct labels for the samples. Torch tensor of the shape samples.
+        bins (int, optional): Number of bins in the plot. Defaults to 10.
+        softmax (bool, optional): Whether to apply softmax on the predictions before processing.
+    """
+    dtp = prob_pred.dtype
+    
+    if softmax:
+        prob_pred = torch.nn.Softmax(dim=1)(prob_pred)
+        
+    top_probs, top_inds = torch.topk(input=prob_pred, k=1, dim=1)
+    top_probs = top_probs.squeeze()
+    top_inds = top_inds.squeeze()
+    cor_pred = top_inds == labs
+
+    df = pd.DataFrame(columns=("bin_start", "bin_end", "sample_num", "mean_conf", "mean_acc"))
+    df_i = 0
+    
+    step = 1 / bin_n
+    for st in np.linspace(0.0, 1.0, bin_n, endpoint=False):
+        if st == 0:
+            cur = top_probs <= step
+        elif st + step >= 1.0:
+            cur = top_probs > st
+        else:
+            cur = (top_probs > st) & (top_probs <= st + step)
+        if any(cur):
+            fxm = torch.mean(top_probs[cur])
+            ym = torch.mean(cor_pred[cur].to(dtype=dtp))
+            bin_sam_n = torch.sum(cur)
+            df.loc[df_i] = [st, st + step, bin_sam_n.item(), fxm.item(), ym.item()]
+            df_i += 1
+                
+    return df
