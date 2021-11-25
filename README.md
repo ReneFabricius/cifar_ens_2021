@@ -11,6 +11,7 @@ Experiments currently contained in this project are the following:
    - Approach one
    - Approach two
 4. Zero probability outputs inspection
+5. Calibration subsets sizes experiment
 
 ## Training subsets experiment
 Experiment code is in the file *training_subsets_experiment.py*.  
@@ -123,6 +124,34 @@ zero probability outputs by this value. It came to our attention, that value of 
 We therefore decided to examine whether these zero probabilities for corect class in the ensemble outputs are product of a bug or just a specific behavior of the ensemble.
 So far we didn't find any bug that would explain this behavior. We will look into a posibile way of avoiding these zero proobability outputs in the future.
 
+## Calibration subsets sizes experiment
+Experiment code is in the file *calibration_subsets_sizes_experiment.py*.
+**Experiment on both CIFAR10 and CIFAR100 datasets.**  
+This experiment employs CalibrationEnsemble and tests its performance when using different sized sets for calibration. These sets are picked either from train set of the neural networks or from separated validation set.
+
+### Usage
+Experiment is performed on the result of single replication of the script in[^2].
+```
+$ python calibration_subsets_sizes_experiment.py -folder replication_folder -max_fold_rep 10 -calibration_set train -verbosity 0 -device cpu
+```
+replication_folder is the folder from which to load networks outputs.
+max_fold_rep gives maximum number of folds for each fold size - number of repetitions of the test for the same set size.
+Set sizes start from 100 and go up to approximately 4950.
+calibration_set specifies the set from which to pick calibration samples, valid options are train or val.
+
+### Output
+Outputs of the experiment are saved into a folder *exp_subsets_sizes_calibration_outputs*.
+This folder contains for each fold:
+1. output of the calibrated ensemble on the test set,
+2. output of the each calibrated network on the test set,
+3. indexes of the used calibration set,
+4. temperature coefficients,
+5. trained ensemble model
+Apart from these files, the folder also contains summary informations:
+1. networks_order - order of the networks in the previous files,
+2. net_metrics.csv - metrics of the networks combined in this experiment,
+3. net_cal_metrics.csv - metrics of the networks after calibration,
+4. ens_metrics.csv - metrics of the created ensemble.
 
 [^1]: https://github.com/ReneFabricius/weighted_ensembles
 [^2]: https://github.com/ReneFabricius/cifar_train_2021
