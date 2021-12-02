@@ -4,7 +4,7 @@ import os
 
 from utils import load_networks_outputs, load_npy_arr
 
-from weensembles.SimplePWCombine import m1
+from weensembles.CouplingMethods import m1
 from weensembles.WeightedLDAEnsemble import WeightedLDAEnsemble
 
 

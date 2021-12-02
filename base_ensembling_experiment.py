@@ -8,7 +8,8 @@ import torch
 from sklearn.model_selection import train_test_split
 
 from weensembles.predictions_evaluation import compute_acc_topk, compute_nll
-from weensembles.SimplePWCombine import m1, m2, bc, m2_iter
+from weensembles.CouplingMethods import m1, m2, bc, m2_iter
+from weensembles.CombiningMethods import lda, logreg, logreg_no_interc, logreg_sweep_C, logreg_no_interc_sweep_C
 
 from utils import linear_pw_ens_train_save, load_networks_outputs
 
@@ -19,7 +20,7 @@ VAL_TRAIN = 'val_training'
 
 def ens_exp():
     coupling_methods = [m1, m2, m2_iter, bc]
-    combining_methods = ["lda", "logreg", "logreg_no_interc"]
+    combining_methods = [lda, logreg, logreg_no_interc]
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-folder', type=str, required=True, help='experiment root folder')
@@ -63,14 +64,14 @@ def ens_exp():
             df_net.loc[df_net_i] = [repli, net, acc, nll]
             df_net_i += 1
 
-        _, lda_train_idx = train_test_split(np.arange(net_outputs["train_labels"].shape[0]),
+        _, co_m_train_idx = train_test_split(np.arange(net_outputs["train_labels"].shape[0]),
                                             test_size=net_outputs["val_labels"].shape[0],
                                             shuffle=True, stratify=net_outputs["train_labels"].cpu())
 
-        np.save(os.path.join(tt_out_path, 'lda_train_idx.npy'), np.array(lda_train_idx))
+        np.save(os.path.join(tt_out_path, 'lda_train_idx.npy'), np.array(co_m_train_idx))
 
-        lda_train_outputs = net_outputs["train_outputs"][:, lda_train_idx, :]
-        lda_train_labels = net_outputs["train_labels"][lda_train_idx]
+        co_m_train_outputs = net_outputs["train_outputs"][:, co_m_train_idx, :]
+        co_m_train_labels = net_outputs["train_labels"][co_m_train_idx]
 
         vt_test_ens_results = linear_pw_ens_train_save(net_outputs["val_outputs"], net_outputs["val_labels"],
                                                        net_outputs["test_outputs"],
@@ -79,13 +80,13 @@ def ens_exp():
                                                        coupling_methods=coupling_methods,
                                                        save_R_mats=args.save_R)
 
-        tt_test_ens_results = linear_pw_ens_train_save(lda_train_outputs, lda_train_labels, net_outputs["test_outputs"],
+        tt_test_ens_results = linear_pw_ens_train_save(co_m_train_outputs, co_m_train_labels, net_outputs["test_outputs"],
                                                        torch.device(args.device),
                                                        tt_out_path, combining_methods=combining_methods,
                                                        coupling_methods=coupling_methods,
                                                        save_R_mats=args.save_R)
 
-        for co_m in combining_methods:
+        for co_m in [co.__name__ for co in combining_methods]:
             for cp_m in [cp.__name__ for cp in coupling_methods]:
                 vt_ens_res = vt_test_ens_results.get(co_m, cp_m)
                 acc_mi = compute_acc_topk(net_outputs["test_labels"], vt_ens_res, 1)
@@ -93,7 +94,7 @@ def ens_exp():
                 df_ens.loc[df_ens_i] = [repli, 'vt', co_m, cp_m, acc_mi, nll_mi]
                 df_ens_i += 1
 
-        for co_m in combining_methods:
+        for co_m in [co.__name__ for co in combining_methods]:
             for cp_m in [cp.__name__ for cp in coupling_methods]:
                 tt_ens_res = tt_test_ens_results.get(co_m, cp_m)
                 acc_mi = compute_acc_topk(net_outputs["test_labels"], tt_ens_res, 1)

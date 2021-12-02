@@ -6,7 +6,7 @@ import regex as re
 import gc
 
 from weensembles.WeightedLinearEnsemble import WeightedLinearEnsemble
-from weensembles.SimplePWCombine import m1, m2, m2_iter, bc
+from weensembles.CouplingMethods import m1, m2, m2_iter, bc
 from weensembles.predictions_evaluation import compute_acc_topk, compute_nll
 from weensembles.CalibrationEnsemble import CalibrationEnsemble
 
@@ -62,6 +62,7 @@ class LinearPWEnsOutputs:
     def __init__(self, combining_methods, coupling_methods):
         self.comb_m_ = combining_methods
         self.coup_m_ = coupling_methods
+
         self.outputs_ = [[None for cp_m in coupling_methods] for co_m in combining_methods]
 
     def store(self, combining_method, coupling_method, output):
@@ -98,23 +99,58 @@ class CalibratingEnsOutputs:
 
 def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_path, combining_methods,
                              coupling_methods,
-                             double_accuracy=False, prefix='', verbose=True, test_normality=True,
-                             save_R_mats=False):
-    dtp = torch.float64 if double_accuracy else torch.float32
-    ens_test_results = LinearPWEnsOutputs(combining_methods, [co_m.__name__ for co_m in coupling_methods])
-    for co_mi, co_m in enumerate(combining_methods):
+                             double_accuracy=False, prefix='', verbose=0, test_normality=True,
+                             save_R_mats=False, val_predictors=None, val_targets=None):
+    """
+    Trains LinearWeightedEnsemble using all possible combinations of provided combining_methods, coupling_methods and sweep_C.
+    Combines outputs given in test_predictors, saves them and returns them in an instance of LinearPWEnsOutputs.
 
-        ens = WeightedLinearEnsemble(predictors.shape[0], predictors.shape[2], device, dtp=dtp)
-        ens.fit_penultimate(predictors, targets, verbose=verbose, test_normality=test_normality, linear_classifier=co_m)
+    Args:
+        predictors (torch tensor): Training predictors. Tensor of shape c×n×k.
+        targets (torch tensor): Training targets.
+        test_predictors (torch tensor): Testing predictors. Tensor of shape c×n_t×k.
+        device (string): Device to use.
+        out_path (string): Folder to save the outputs to.
+        combining_methods (list): List of combining methods to use.
+        coupling_methods (list): List of coupling methods to use.
+        double_accuracy (bool, optional): Whether to use double accuracy. Defaults to False.
+        prefix (str, optional): Prefix to prepend to file names with outputs. Defaults to ''.
+        verbose (int, optional): Verbosity level. Defaults to 0.
+        test_normality (bool, optional): Whether to test normality of predictors. Defaults to True.
+        save_R_mats (bool, optional): Whether to save resulting R matrices. Defaults to False.
+        sweep_C (bool, optional): Whether to use hyperparameter sweep on regularization coefficient. Defaults to False.
+        val_predictors (torch tensor, optional): Validation predictors. Tensor of shape c×n_v×k. Required if sweep_C is True. Defaults to None.
+        val_targets (torch tensor, optional): Validation targets. Required if sweep_C is True. Defaults to None.
+
+    Raises:
+        rerr: [description]
+
+    Returns:
+        LinearPWEnsOutputs: Obtained test predictions.
+    """
+    dtp = torch.float64 if double_accuracy else torch.float32
+    ens_test_results = LinearPWEnsOutputs(combining_methods, [co_m.__name__ for co_m in coupling_methods], using_sweep_C=sweep_C)
+    
+    for co_mi, co_m in enumerate(combining_methods):
+        if co_m.req_val and (val_predictors is None or val_targets is None):
+            print("Combining method {} requires validation data, but val_predictors or val_targets are None".format(co_m.__name__))
+            continue
+        
+        ens = WeightedLinearEnsemble(c=predictors.shape[0], k=predictors.shape[2], device=device, dtp=dtp)
+        if co_m.req_val:
+            ens.fit(MP=predictors, tar=targets, verbose=verbose, test_normality=test_normality, combining_method=co_m, penultimate=True,
+                    MP_val=val_predictors, tar_val=val_targets)
+        else:
+            ens.fit(MP=predictors, tar=targets, verbose=verbose, test_normality=test_normality, combining_method=co_m, penultimate=True)
 
         ens.save_coefs_csv(
-            os.path.join(out_path, prefix + co_m + '_coefs_{}.csv'.format("double" if double_accuracy else "float")))
-        if co_m == "lda":
+            os.path.join(out_path, prefix + co_m.__name__ + '_coefs_{}.csv'.format("double" if double_accuracy else "float")))
+        if test_normality:
             ens.save_pvals(
                 os.path.join(out_path, prefix + 'p_values_{}.npy'.format("double" if double_accuracy else "float")))
-        ens.save(os.path.join(out_path, prefix + co_m + '_model_{}'.format("double" if double_accuracy else "float")))
+        ens.save(os.path.join(out_path, prefix + co_m.__name__ + '_model_{}'.format("double" if double_accuracy else "float")))
 
-        for m_i, pwc_method in enumerate(coupling_methods):
+        for cp_mi, cp_m in enumerate(coupling_methods):
             fin = False
             tries = 0
             cur_b = test_predictors.shape[1]
@@ -124,7 +160,7 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
                     torch.cuda.empty_cache()
                     print('Trying again, try {}, batch size {}'.format(tries, cur_b))
                 try:
-                    ens_test_out_method = ens.predict_proba(test_predictors, pwc_method, output_R=save_R_mats,
+                    ens_test_out_method = ens.predict_proba(test_predictors, cp_m, output_R=save_R_mats,
                                                             batch_size=cur_b)
                     fin = True
                 except RuntimeError as rerr:
@@ -141,15 +177,15 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
 
             if save_R_mats:
                 ens_test_out_method, ens_test_R = ens_test_out_method
-                if m_i == 0:
-                    np.save(os.path.join(out_path, "{}ens_test_R_co_{}_prec_{}.npy".format(prefix, co_m,
+                if cp_mi == 0:
+                    np.save(os.path.join(out_path, "{}ens_test_R_co_{}_prec_{}.npy".format(prefix, co_m.__name__,
                                                                                            (
                                                                                                "double" if double_accuracy else "float"))),
                             ens_test_R.detach().cpu().numpy())
 
-            ens_test_results.store(co_m, pwc_method.__name__, ens_test_out_method)
+            ens_test_results.store(co_m.__name__, cp_m.__name__, ens_test_out_method)
             np.save(os.path.join(out_path,
-                                 "{}ens_test_outputs_co_{}_cp_{}_prec_{}.npy".format(prefix, co_m, pwc_method.__name__,
+                                 "{}ens_test_outputs_co_{}_cp_{}_prec_{}.npy".format(prefix, co_m.__name__, cp_m.__name__,
                                                                                      (
                                                                                          "double" if double_accuracy else "float"))),
                     ens_test_out_method.detach().cpu().numpy())
@@ -403,7 +439,7 @@ def get_irrelevant_predictions(R_mat, labs):
 
 def test_model(model_path, test_inputs_path):
     device = "cuda"
-    co_ms = [m1, m2, m2_iter, bc]
+    cp_methods = [m1, m2, m2_iter, bc]
     networks = os.listdir(test_inputs_path)
 
     test_outputs = []
@@ -416,11 +452,11 @@ def test_model(model_path, test_inputs_path):
     ens = WeightedLinearEnsemble(test_outputs.shape[0], test_outputs.shape[2], device=device)
     ens.load(model_path)
 
-    for co_m in co_ms:
-        co_m_pred = ens.predict_proba(test_outputs, co_m)
-        acc = compute_acc_topk(test_labels, co_m_pred, 1)
-        nll = compute_nll(test_labels, co_m_pred)
-        print("Method {}, accuracy: {}, nll: {}".format(co_m.__name__, acc, nll))
+    for cp_m in cp_methods:
+        cp_m_pred = ens.predict_proba(test_outputs, cp_m)
+        acc = compute_acc_topk(test_labels, cp_m_pred, 1)
+        nll = compute_nll(test_labels, cp_m_pred)
+        print("Method {}, accuracy: {}, nll: {}".format(cp_m.__name__, acc, nll))
         
 
 def compute_calibration_plot(prob_pred, labs, bin_n=10, softmax=False):
