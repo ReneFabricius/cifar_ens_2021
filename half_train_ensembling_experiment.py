@@ -8,8 +8,6 @@ import torch
 from sklearn.model_selection import StratifiedKFold
 
 from weensembles.predictions_evaluation import compute_acc_topk, compute_nll
-from weensembles.CouplingMethods import m1, m2, bc, m2_iter
-from weensembles.CombiningMethods import lda, logreg, logreg_no_interc, logreg_sweep_C, logreg_no_interc_sweep_C
 
 from utils import linear_pw_ens_train_save, load_networks_outputs, print_memory_statistics
 
@@ -19,8 +17,8 @@ VAL_TRAIN = 'val_training'
 
 
 def ens_exp():
-    coupling_methods = [m1, m2, m2_iter, bc]
-    combining_methods = [lda, logreg, logreg_no_interc]
+    coupling_methods = ["m1", "m2", "m2_iter", "bc"]
+    combining_methods = ["lda", "logreg", "logreg_no_interc"]
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-folder', type=str, required=True, help='experiment root folder')
@@ -121,8 +119,8 @@ def ens_exp():
                                                             verbose=False, test_normality=False,
                                                             save_R_mats=args.save_R)
 
-                for co_m in [co.__name__ for co in combining_methods]:
-                    for cp_m in [cp.__name__ for cp in coupling_methods]:
+                for co_m in combining_methods:
+                    for cp_m in coupling_methods:
                         ens_res = fold_ens_results.get(co_m, cp_m)
                         acc_mi = compute_acc_topk(test_labels, ens_res, 1)
                         nll_mi = compute_nll(test_labels, ens_res)

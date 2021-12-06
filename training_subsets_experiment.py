@@ -5,8 +5,6 @@ import pandas as pd
 from sklearn.model_selection import StratifiedKFold
 
 from weensembles.predictions_evaluation import compute_acc_topk, compute_nll
-from weensembles.CouplingMethods import m1, m2, bc, m2_iter
-from weensembles.CombiningMethods import lda, logreg, logreg_no_interc, logreg_sweep_C, logreg_no_interc_sweep_C
 import torch
 
 from utils import load_networks_outputs, load_npy_arr, linear_pw_ens_train_save
@@ -15,8 +13,8 @@ TRAIN_OUTPUTS_FOLDER = 'exp_subsets_train_outputs'
 
 
 def ens_train_exp():
-    coupling_methods = [m1, m2, m2_iter, bc]
-    combining_methods = [lda, logreg, logreg_no_interc]
+    coupling_methods = ["m1", "m2", "m2_iter", "bc"]
+    combining_methods = ["lda", "logreg", "logreg_no_interc"]
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-folder', type=str, required=True, help='replication_folder')
@@ -65,8 +63,8 @@ def ens_train_exp():
                                                         coupling_methods=coupling_methods, prefix=(str(fold_i) + "_"),
                                                         double_accuracy=(dtype == "double"))
 
-            for co_m in [co.__name__ for co in combining_methods]:
-                for cp_m in [cp.__name__ for cp in coupling_methods]:
+            for co_m in combining_methods:
+                for cp_m in coupling_methods:
                     test_ens_method_res = test_ens_results.get(co_m, cp_m)
                     acc_method = compute_acc_topk(net_outputs["test_labels"], test_ens_method_res, 1)
                     nll_method = compute_nll(net_outputs["test_labels"], test_ens_method_res)

@@ -4,12 +4,10 @@ import os
 
 from utils import load_networks_outputs, load_npy_arr
 
-from weensembles.CouplingMethods import m1
-from weensembles.WeightedLDAEnsemble import WeightedLDAEnsemble
-
+from weensembles.WeightedLinearEnsemble import WeightedLinearEnsemble
 
 def zero_outputs_inspection():
-    method = m1
+    method = "m1"
     repl = 0
     train_set = "val"
     precision = "float"
@@ -23,7 +21,7 @@ def zero_outputs_inspection():
     base_dir = "D:\\skola\\1\\weighted_ensembles\\tests\\test_cifar_2021\\data\\data_train_val_c10"
     net_outputs_path = os.path.join(base_dir, str(repl), "outputs")
     ens_output = os.path.join(base_dir, str(repl), "comb_outputs",
-                              train_set + "_training", "ens_test_outputs_" + method.__name__ + "_" + precision + ".npy")
+                              train_set + "_training", "ens_test_outputs_" + method + "_" + precision + ".npy")
     model_file = os.path.join(base_dir, str(repl), "comb_outputs",
                               train_set + "_training", "model_" + precision)
 
@@ -39,7 +37,7 @@ def zero_outputs_inspection():
 
     zero_inds = (correct_probabilities == 0).nonzero(as_tuple=True)[0]
 
-    ens = WeightedLDAEnsemble(device=torch_dev, dtp=torch_dtp)
+    ens = WeightedLinearEnsemble(device=torch_dev, dtp=torch_dtp)
     ens.load(model_file)
 
     for i, zero_ind in enumerate(zero_inds[:print_num]):

@@ -6,7 +6,6 @@ import regex as re
 import gc
 
 from weensembles.WeightedLinearEnsemble import WeightedLinearEnsemble
-from weensembles.CouplingMethods import m1, m2, m2_iter, bc
 from weensembles.predictions_evaluation import compute_acc_topk, compute_nll
 from weensembles.CalibrationEnsemble import CalibrationEnsemble
 
@@ -129,11 +128,11 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
         LinearPWEnsOutputs: Obtained test predictions.
     """
     dtp = torch.float64 if double_accuracy else torch.float32
-    ens_test_results = LinearPWEnsOutputs(combining_methods, [co_m.__name__ for co_m in coupling_methods], using_sweep_C=sweep_C)
+    ens_test_results = LinearPWEnsOutputs(combining_methods, coupling_methods)
     
     for co_mi, co_m in enumerate(combining_methods):
         if co_m.req_val and (val_predictors is None or val_targets is None):
-            print("Combining method {} requires validation data, but val_predictors or val_targets are None".format(co_m.__name__))
+            print("Combining method {} requires validation data, but val_predictors or val_targets are None".format(co_m))
             continue
         
         ens = WeightedLinearEnsemble(c=predictors.shape[0], k=predictors.shape[2], device=device, dtp=dtp)
@@ -144,11 +143,11 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
             ens.fit(MP=predictors, tar=targets, verbose=verbose, test_normality=test_normality, combining_method=co_m, penultimate=True)
 
         ens.save_coefs_csv(
-            os.path.join(out_path, prefix + co_m.__name__ + '_coefs_{}.csv'.format("double" if double_accuracy else "float")))
+            os.path.join(out_path, prefix + co_m + '_coefs_{}.csv'.format("double" if double_accuracy else "float")))
         if test_normality:
             ens.save_pvals(
                 os.path.join(out_path, prefix + 'p_values_{}.npy'.format("double" if double_accuracy else "float")))
-        ens.save(os.path.join(out_path, prefix + co_m.__name__ + '_model_{}'.format("double" if double_accuracy else "float")))
+        ens.save(os.path.join(out_path, prefix + co_m + '_model_{}'.format("double" if double_accuracy else "float")))
 
         for cp_mi, cp_m in enumerate(coupling_methods):
             fin = False
@@ -178,16 +177,14 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
             if save_R_mats:
                 ens_test_out_method, ens_test_R = ens_test_out_method
                 if cp_mi == 0:
-                    np.save(os.path.join(out_path, "{}ens_test_R_co_{}_prec_{}.npy".format(prefix, co_m.__name__,
-                                                                                           (
-                                                                                               "double" if double_accuracy else "float"))),
+                    np.save(os.path.join(out_path, "{}ens_test_R_co_{}_prec_{}.npy".format(prefix, co_m,
+                                                                                           ("double" if double_accuracy else "float"))),
                             ens_test_R.detach().cpu().numpy())
 
-            ens_test_results.store(co_m.__name__, cp_m.__name__, ens_test_out_method)
+            ens_test_results.store(co_m, cp_m, ens_test_out_method)
             np.save(os.path.join(out_path,
-                                 "{}ens_test_outputs_co_{}_cp_{}_prec_{}.npy".format(prefix, co_m.__name__, cp_m.__name__,
-                                                                                     (
-                                                                                         "double" if double_accuracy else "float"))),
+                                 "{}ens_test_outputs_co_{}_cp_{}_prec_{}.npy".format(prefix, co_m, cp_m,
+                                                                                     ("double" if double_accuracy else "float"))),
                     ens_test_out_method.detach().cpu().numpy())
 
     return ens_test_results
@@ -439,7 +436,7 @@ def get_irrelevant_predictions(R_mat, labs):
 
 def test_model(model_path, test_inputs_path):
     device = "cuda"
-    cp_methods = [m1, m2, m2_iter, bc]
+    cp_methods = ["m1", "m2", "m2_iter", "bc"]
     networks = os.listdir(test_inputs_path)
 
     test_outputs = []
@@ -456,7 +453,7 @@ def test_model(model_path, test_inputs_path):
         cp_m_pred = ens.predict_proba(test_outputs, cp_m)
         acc = compute_acc_topk(test_labels, cp_m_pred, 1)
         nll = compute_nll(test_labels, cp_m_pred)
-        print("Method {}, accuracy: {}, nll: {}".format(cp_m.__name__, acc, nll))
+        print("Method {}, accuracy: {}, nll: {}".format(cp_m, acc, nll))
         
 
 def compute_calibration_plot(prob_pred, labs, bin_n=10, softmax=False):
