@@ -21,7 +21,7 @@ def comp_plot_data():
         alt_ptrn = None
     elif args.outputs_type == 'cal_ens':
         prim_ptrn = re.compile("^cal_set_(?P<calibration_set>.+?)_size_(?P<size>\d+?)_repl_(?P<repl>\d+?)_ens_test_outputs_cal_(?P<calibration_method>.+?)_prec_(?P<precision>.+?).npy$")
-        alt_ptrn = None
+        alt_ptrn = re.compile("^cal_set_(?P<calibration_set>.+?)_size_(?P<size>\d+?)_ens_test_outputs_cal_(?P<calibration_method>.+?)_prec_(?P<precision>.+?).npy$")
     elif args.outputs_type == 'pw_ens':
         prim_ptrn = re.compile("^fold_(?P<fold>\d+?)_ens_test_outputs_co_(?P<combining_method>.+?)_cp_(?P<coupling_method>.+?)_prec_(?P<precision>.+?).npy$")
         alt_ptrn = re.compile("^ens_test_outputs_co_(?P<combining_method>.+?)_cp_(?P<coupling_method>.+?)_prec_(?P<precision>.+?).npy$")

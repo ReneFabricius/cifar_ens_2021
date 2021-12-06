@@ -7,9 +7,7 @@ import pandas as pd
 import torch
 from sklearn.model_selection import train_test_split
 
-from weensembles.predictions_evaluation import compute_acc_topk, compute_nll
-
-from utils import linear_pw_ens_train_save, load_networks_outputs
+from utils import linear_pw_ens_train_save, load_networks_outputs, evaluate_networks, evaluate_ens
 
 ENS_OUTPUTS_FOLDER = 'comb_outputs'
 TRAIN_TRAIN = 'train_training'
@@ -31,11 +29,8 @@ def ens_exp():
     parser.set_defaults(save_R=False)
     args = parser.parse_args()
 
-    df_ens = pd.DataFrame(columns=('repli', 'train_set', 'combining_method', 'coupling_method', 'accuracy', 'nll'))
-    df_ens_i = 0
-
-    df_net = pd.DataFrame(columns=("repli", "network", "accuracy", "nll"))
-    df_net_i = 0
+    df_ens = pd.DataFrame(columns=('repli', 'train_set', 'combining_method', 'coupling_method', 'accuracy', 'nll', 'ece'))
+    df_net = pd.DataFrame(columns=("repli", "network", "accuracy", "nll", "ece"))
 
     for repli in range(args.repl):
         repli_path = os.path.join(args.folder, str(repli))
@@ -56,12 +51,10 @@ def ens_exp():
 
         net_outputs = load_networks_outputs(nn_outputs_path, comb_out_path, args.device)
 
-        for i, net in enumerate(net_outputs["networks"]):
-            acc = compute_acc_topk(net_outputs["test_labels"], net_outputs["test_outputs"][i], 1)
-            nll = compute_nll(net_outputs["test_labels"], net_outputs["test_outputs"][i], penultimate=True)
-            df_net.loc[df_net_i] = [repli, net, acc, nll]
-            df_net_i += 1
-
+        repli_df_net = evaluate_networks(net_outputs)
+        repli_df_net["repli"] = repli
+        df_net = pd.concat(df_net, repli_df_net)
+        
         _, co_m_train_idx = train_test_split(np.arange(net_outputs["train_labels"].shape[0]),
                                             test_size=net_outputs["val_labels"].shape[0],
                                             shuffle=True, stratify=net_outputs["train_labels"].cpu())
@@ -84,24 +77,16 @@ def ens_exp():
                                                        coupling_methods=coupling_methods,
                                                        save_R_mats=args.save_R)
 
-        for co_m in combining_methods:
-            for cp_m in coupling_methods:
-                vt_ens_res = vt_test_ens_results.get(co_m, cp_m)
-                acc_mi = compute_acc_topk(net_outputs["test_labels"], vt_ens_res, 1)
-                nll_mi = compute_nll(net_outputs["test_labels"], vt_ens_res)
-                df_ens.loc[df_ens_i] = [repli, 'vt', co_m, cp_m, acc_mi, nll_mi]
-                df_ens_i += 1
+        df_ens_repli_vt = evaluate_ens(ens_outputs=vt_test_ens_results, tar=net_outputs["test_labels"])
+        df_ens_repli_tt = evaluate_ens(ens_outputs=tt_test_ens_results, tar=net_outputs["test_labels"])
+        df_ens_repli_vt["repli"] = repli
+        df_ens_repli_vt["train_set"] = "vt"
+        df_ens_repli_tt["repli"] = repli
+        df_ens_repli_tt["train_set"] = "tt"
+        df_ens = pd.concat(df_ens, df_ens_repli_vt, df_ens_repli_tt)
 
-        for co_m in combining_methods:
-            for cp_m in coupling_methods:
-                tt_ens_res = tt_test_ens_results.get(co_m, cp_m)
-                acc_mi = compute_acc_topk(net_outputs["test_labels"], tt_ens_res, 1)
-                nll_mi = compute_nll(net_outputs["test_labels"], tt_ens_res)
-                df_ens.loc[df_ens_i] = [repli, "tt", co_m, cp_m, acc_mi, nll_mi]
-                df_ens_i += 1
-
-    df_ens.to_csv(os.path.join(args.folder, 'ensemble_accuracies.csv'), index=False)
-    df_net.to_csv(os.path.join(args.folder, "net_accuracies.csv"), index=False)
+    df_ens.to_csv(os.path.join(args.folder, 'ensemble_metrics.csv'), index=False)
+    df_net.to_csv(os.path.join(args.folder, "net_metrics.csv"), index=False)
 
 
 if __name__ == '__main__':

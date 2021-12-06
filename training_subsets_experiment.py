@@ -4,10 +4,9 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import StratifiedKFold
 
-from weensembles.predictions_evaluation import compute_acc_topk, compute_nll
 import torch
 
-from utils import load_networks_outputs, load_npy_arr, linear_pw_ens_train_save
+from utils import load_networks_outputs, linear_pw_ens_train_save, evaluate_ens, evaluate_networks
 
 TRAIN_OUTPUTS_FOLDER = 'exp_subsets_train_outputs'
 
@@ -32,19 +31,13 @@ def ens_train_exp():
     print("Loading networks outputs")
     net_outputs = load_networks_outputs(networks_outputs_folder, exper_outputs_path, args.device)
 
-    df_net = pd.DataFrame(columns=("network", "accuracy", "nll"))
-    for i, net in enumerate(net_outputs["networks"]):
-        acc = compute_acc_topk(net_outputs["test_labels"], net_outputs["test_outputs"][i], 1)
-        nll = compute_nll(net_outputs["test_labels"], net_outputs["test_outputs"][i], penultimate=True)
-        df_net.loc[i] = [net, acc, nll]
-
-    df_net.to_csv(os.path.join(exper_outputs_path, "net_accuracies.csv"), index=False)
+    df_net = evaluate_networks(net_outputs) 
+    df_net.to_csv(os.path.join(exper_outputs_path, "net_metrics.csv"), index=False)
 
     n_samples = net_outputs["train_labels"].shape[0]
     n_folds = n_samples // args.train_size
     skf = StratifiedKFold(n_splits=n_folds, shuffle=True)
-    df = pd.DataFrame(columns=("combining_method", "coupling_method", "precision", "accuracy", "nll"))
-    df_i = 0
+    df = pd.DataFrame(columns=("combining_method", "coupling_method", "precision", "accuracy", "nll", "ece"))
 
     for fold_i, (_, lda_train_idxs) in enumerate(skf.split(np.zeros(n_samples),
                                                            net_outputs["train_labels"].detach().cpu().clone().numpy())):
@@ -63,14 +56,10 @@ def ens_train_exp():
                                                         coupling_methods=coupling_methods, prefix=(str(fold_i) + "_"),
                                                         double_accuracy=(dtype == "double"))
 
-            for co_m in combining_methods:
-                for cp_m in coupling_methods:
-                    test_ens_method_res = test_ens_results.get(co_m, cp_m)
-                    acc_method = compute_acc_topk(net_outputs["test_labels"], test_ens_method_res, 1)
-                    nll_method = compute_nll(net_outputs["test_labels"], test_ens_method_res)
-                    df.loc[df_i] = [co_m, cp_m, dtype, acc_method, nll_method]
-                    df_i += 1
-
+            ens_df_dtp = evaluate_ens(ens_outputs=test_ens_results, tar=net_outputs["test_labels"])
+            ens_df_dtp["precision"] = dtype
+            df = pd.concat(df, ens_df_dtp)
+            
     df.to_csv(os.path.join(exper_outputs_path, 'accuracies.csv'), index=False)
 
 

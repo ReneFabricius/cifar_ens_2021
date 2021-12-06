@@ -1,4 +1,5 @@
 import argparse
+from cgi import test
 import os
 import numpy as np
 import shutil
@@ -7,9 +8,7 @@ import pandas as pd
 import torch
 from sklearn.model_selection import StratifiedKFold
 
-from weensembles.predictions_evaluation import compute_acc_topk, compute_nll
-
-from utils import linear_pw_ens_train_save, load_networks_outputs, print_memory_statistics
+from utils import evaluate_ens, evaluate_networks, linear_pw_ens_train_save, load_networks_outputs, print_memory_statistics
 
 ENS_OUTPUTS_FOLDER = 'comb_outputs'
 TRAIN_TRAIN = 'train_training'
@@ -38,11 +37,9 @@ def ens_exp():
     torch_dev_load = torch.device(load_device)
 
     df_ens = pd.DataFrame(columns=('repli', 'fold',  'train_set', 'combining_method', 'coupling_method',
-                                   'accuracy', 'nll'))
-    df_ens_i = 0
+                                   'accuracy', 'nll', 'ece'))
 
-    df_net = pd.DataFrame(columns=("repli", "network", "accuracy", "nll"))
-    df_net_i = 0
+    df_net = pd.DataFrame(columns=("repli", "network", "accuracy", "nll", "ece"))
 
     print_memory_statistics()
 
@@ -68,13 +65,9 @@ def ens_exp():
         net_outputs = load_networks_outputs(nn_outputs_path, comb_out_path, load_device)
 
         print("Evaluating networks")
-        for i, net in enumerate(net_outputs["networks"]):
-            acc = compute_acc_topk(net_outputs["test_labels"], net_outputs["test_outputs"][i], 1)
-            nll = compute_nll(net_outputs["test_labels"], net_outputs["test_outputs"][i], penultimate=True)
-            df_net.loc[df_net_i] = [repli, net, acc, nll]
-            df_net_i += 1
-
-        df_net.to_csv(os.path.join(args.folder, "net_accuracies.csv"), index=False)
+        net_df_repli = evaluate_networks(net_outputs)
+        net_df_repli["repli"] = repli
+        df_net = pd.concat(df_net, net_df_repli)
 
         test_labels = net_outputs["test_labels"].to(device=torch_dev)
 
@@ -119,19 +112,18 @@ def ens_exp():
                                                             verbose=False, test_normality=False,
                                                             save_R_mats=args.save_R)
 
-                for co_m in combining_methods:
-                    for cp_m in coupling_methods:
-                        ens_res = fold_ens_results.get(co_m, cp_m)
-                        acc_mi = compute_acc_topk(test_labels, ens_res, 1)
-                        nll_mi = compute_nll(test_labels, ens_res)
-                        df_ens.loc[df_ens_i] = [repli, fold_i, par["train_set"], co_m, cp_m, acc_mi, nll_mi]
-                        df_ens_i += 1
-
+                ens_df_fold = evaluate_ens(ens_outputs=fold_ens_results, tar=test_labels)
+                ens_df_fold["repli"] = repli
+                ens_df_fold["fold"] = fold_i
+                ens_df_fold["train_set"] = par["train_set"]
+                df_ens = pd.concat(df_ens, ens_df_fold)
+                
                 del fold_ens_results
                 print("Memory after saving results")
                 print_memory_statistics()
 
-    df_ens.to_csv(os.path.join(args.folder, 'ensemble_accuracies.csv'), index=False)
+    df_ens.to_csv(os.path.join(args.folder, 'ensemble_metrics.csv'), index=False)
+    df_net.to_csv(os.path.join(args.folder, "net_metrics.csv"), index=False)
 
 
 if __name__ == '__main__':
