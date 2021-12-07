@@ -70,7 +70,7 @@ def ens_train_exp():
 
             df_ens_ts = evaluate_ens(ens_outputs=test_ens_results, tar=net_outputs["test_labels"])
             df_ens_ts["train_size"] = real_t_size
-            df = pd.concat(df, df_ens_ts)
+            df = pd.concat([df, df_ens_ts], ignore_index=True)
             
         cur_t_size = int(quot * cur_t_size)
 

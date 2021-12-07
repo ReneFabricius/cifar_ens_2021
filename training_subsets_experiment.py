@@ -58,7 +58,7 @@ def ens_train_exp():
 
             ens_df_dtp = evaluate_ens(ens_outputs=test_ens_results, tar=net_outputs["test_labels"])
             ens_df_dtp["precision"] = dtype
-            df = pd.concat(df, ens_df_dtp)
+            df = pd.concat([df, ens_df_dtp], ignore_index=True)
             
     df.to_csv(os.path.join(exper_outputs_path, 'accuracies.csv'), index=False)
 

@@ -8,6 +8,7 @@ import gc
 from weensembles.WeightedLinearEnsemble import WeightedLinearEnsemble
 from weensembles.predictions_evaluation import ECE_sweep, compute_acc_topk, compute_nll
 from weensembles.CalibrationEnsemble import CalibrationEnsemble
+from weensembles.CombiningMethods import comb_picker
 
 
 def load_npy_arr(file, device):
@@ -113,7 +114,7 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
                              double_accuracy=False, prefix='', verbose=0, test_normality=True,
                              save_R_mats=False, val_predictors=None, val_targets=None):
     """
-    Trains LinearWeightedEnsemble using all possible combinations of provided combining_methods, coupling_methods and sweep_C.
+    Trains LinearWeightedEnsemble using all possible combinations of provided combining_methods and coupling_methods.
     Combines outputs given in test_predictors, saves them and returns them in an instance of LinearPWEnsOutputs.
 
     Args:
@@ -129,7 +130,6 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
         verbose (int, optional): Verbosity level. Defaults to 0.
         test_normality (bool, optional): Whether to test normality of predictors. Defaults to True.
         save_R_mats (bool, optional): Whether to save resulting R matrices. Defaults to False.
-        sweep_C (bool, optional): Whether to use hyperparameter sweep on regularization coefficient. Defaults to False.
         val_predictors (torch tensor, optional): Validation predictors. Tensor of shape c×n_v×k. Required if sweep_C is True. Defaults to None.
         val_targets (torch tensor, optional): Validation targets. Required if sweep_C is True. Defaults to None.
 
@@ -143,12 +143,13 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
     ens_test_results = LinearPWEnsOutputs(combining_methods, coupling_methods)
     
     for co_mi, co_m in enumerate(combining_methods):
-        if co_m.req_val and (val_predictors is None or val_targets is None):
+        co_m_fun = comb_picker(co_m)
+        if co_m_fun.req_val and (val_predictors is None or val_targets is None):
             print("Combining method {} requires validation data, but val_predictors or val_targets are None".format(co_m))
             continue
         
         ens = WeightedLinearEnsemble(c=predictors.shape[0], k=predictors.shape[2], device=device, dtp=dtp)
-        if co_m.req_val:
+        if co_m_fun.req_val:
             ens.fit(MP=predictors, tar=targets, verbose=verbose, test_normality=test_normality, combining_method=co_m, penultimate=True,
                     MP_val=val_predictors, tar_val=val_targets)
         else:
@@ -203,7 +204,7 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
 
 
 def calibrating_ens_train_save(predictors, targets, test_predictors, device, out_path, calibrating_methods,
-                               double_accuracy=False, prefix='', verbose=True):
+                               networks, double_accuracy=False, prefix='', verbose=0):
     """
 
     :param predictors: Penultimate layer outputs or logits to train ensemble on.
@@ -214,12 +215,12 @@ def calibrating_ens_train_save(predictors, targets, test_predictors, device, out
     :param calibrating_methods: Calibrating methods to use.
     :param double_accuracy: Whether to use double accuracy.
     :param prefix: Prefix for file names of saved outputs.
-    :param verbose: Whether to print detailed info.
+    :param verbose: Level of verbosity.
     :return: CalibratingEnsOutput instance with ensemble and calibrated networks outputs.
     """
     dtp = torch.float64 if double_accuracy else torch.float32
     ens_test_results = CalibratingEnsOutputs(calibrating_methods=[cal_m.__name__ for cal_m in calibrating_methods],
-                                             networks_n=predictors.shape[0])
+                                             networks=networks)
     for cal_mi, cal_m in enumerate(calibrating_methods):
         ens = CalibrationEnsemble(c=predictors.shape[0], k=predictors.shape[2], device=device, dtp=dtp)
         ens.fit(MP=predictors, tar=targets, calibration_method=cal_m, verbose=verbose)
@@ -441,7 +442,7 @@ def get_irrelevant_predictions(R_mat, labs):
             cur_df = pd.DataFrame(data={"class1": [c1] * irrel_count, "class2": [c2] * irrel_count,
                                         "pred1": c1_irrelev_preds.tolist(),
                                         "pred2": c2_irrelev_preds.tolist()})
-            df = pd.concat([df, cur_df])
+            df = pd.concat([df, cur_df], ignore_index=True)
 
     return df
 

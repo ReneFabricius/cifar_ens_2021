@@ -67,7 +67,7 @@ def ens_exp():
         print("Evaluating networks")
         net_df_repli = evaluate_networks(net_outputs)
         net_df_repli["repli"] = repli
-        df_net = pd.concat(df_net, net_df_repli)
+        df_net = pd.concat([df_net, net_df_repli], ignore_index=True)
 
         test_labels = net_outputs["test_labels"].to(device=torch_dev)
 
@@ -116,7 +116,7 @@ def ens_exp():
                 ens_df_fold["repli"] = repli
                 ens_df_fold["fold"] = fold_i
                 ens_df_fold["train_set"] = par["train_set"]
-                df_ens = pd.concat(df_ens, ens_df_fold)
+                df_ens = pd.concat([df_ens, ens_df_fold], ignore_index=True)
                 
                 del fold_ens_results
                 print("Memory after saving results")

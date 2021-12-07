@@ -90,14 +90,14 @@ def ens_train_exp():
                                                           device=torch.device(args.device), out_path=exper_outputs_path,
                                                           calibrating_methods=calibration_methods,
                                                           prefix="cal_set_{}_size_{}_repl_{}_".format(args.calibration_set, real_t_size, fold_i),
-                                                          verbose=args.verbosity > 0)
+                                                          verbose=args.verbosity)
 
             ens_df_fold, net_cal_df_fold = evaluate_ens(test_ens_results)            
             ens_df_fold["train_size"] = real_t_size
-            df_ens = pd.concat(df_ens, ens_df_fold)            
+            df_ens = pd.concat([df_ens, ens_df_fold], ignore_index=True)            
                         
             net_cal_df_fold["train_size"] = real_t_size           
-            df_net_cal = pd.concat(df_net_cal, net_cal_df_fold)
+            df_net_cal = pd.concat([df_net_cal, net_cal_df_fold], ignore_index=True)
                         
         cur_t_size = int(quot * cur_t_size)
 

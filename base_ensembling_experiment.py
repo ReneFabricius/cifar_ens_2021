@@ -53,7 +53,7 @@ def ens_exp():
 
         repli_df_net = evaluate_networks(net_outputs)
         repli_df_net["repli"] = repli
-        df_net = pd.concat(df_net, repli_df_net)
+        df_net = pd.concat([df_net, repli_df_net], ignore_index=True)
         
         _, co_m_train_idx = train_test_split(np.arange(net_outputs["train_labels"].shape[0]),
                                             test_size=net_outputs["val_labels"].shape[0],
@@ -83,7 +83,7 @@ def ens_exp():
         df_ens_repli_vt["train_set"] = "vt"
         df_ens_repli_tt["repli"] = repli
         df_ens_repli_tt["train_set"] = "tt"
-        df_ens = pd.concat(df_ens, df_ens_repli_vt, df_ens_repli_tt)
+        df_ens = pd.concat([df_ens, df_ens_repli_vt, df_ens_repli_tt], ignore_index=True)
 
     df_ens.to_csv(os.path.join(args.folder, 'ensemble_metrics.csv'), index=False)
     df_net.to_csv(os.path.join(args.folder, "net_metrics.csv"), index=False)
