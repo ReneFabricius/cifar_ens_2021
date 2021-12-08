@@ -20,6 +20,8 @@ def ens_evaluation():
     parser.add_argument('-device', type=str, default="cpu", help="Device to use")
     parser.add_argument('-cifar', type=int, help="CIFAR type (10 or 100)")
     parser.add_argument('-verbose', default=0, type=int, help="Level of verbosity")
+    parser.add_argument('-load_existing_models', dest="load_existing_models", action="store_true", help="Whether to load trained models if saved file exists")
+    parser.set_defaults(load_existing_models=False)
     args = parser.parse_args()
     
     lin_ens_train_size = 50 * args.cifar
@@ -60,7 +62,7 @@ def ens_evaluation():
             
             cal_ens_outputs = calibrating_ens_train_save(predictors=val_pred, targets=val_lab, test_predictors=test_pred,
                                                          device=args.device, out_path=exper_output_folder, calibrating_methods=[TemperatureScaling],
-                                                         prefix=nets_string, verbose=args.verbose, networks=ss)
+                                                         prefix=nets_string, verbose=args.verbose, networks=ss, load_existing_models=args.load_existing_models)
             
             cal_ens_df, cal_net_df = evaluate_ens(ens_outputs=cal_ens_outputs, tar=test_lab)
             cal_ens_df[networks] = mask
@@ -71,7 +73,7 @@ def ens_evaluation():
                                                        device=args.device, out_path=exper_output_folder, combining_methods=combining_methods,
                                                        coupling_methods=coupling_methods, prefix=nets_string,
                                                        verbose=args.verbose, test_normality=False, val_predictors=val_pred,
-                                                       val_targets=val_lab)
+                                                       val_targets=val_lab, load_existing_models=args.load_existing_models)
             
             lin_ens_df = evaluate_ens(ens_outputs=lin_ens_outputs, tar=test_lab)
             lin_ens_df[networks] = mask
