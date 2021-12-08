@@ -26,6 +26,9 @@ def ens_evaluation():
     exper_output_folder = os.path.join(args.folder, "exp_ensemble_evaluation")
     if not os.path.exists(exper_output_folder):
         os.mkdir(exper_output_folder)
+        
+    cal_metrics_file = os.path.join(exper_output_folder, "ens_cal_metrics.csv")
+    pwc_metrics_file = os.path.join(exper_output_folder, "ens_pwc_metrics.csv")
 
     print("Loading networks outputs")
     net_outputs = load_networks_outputs(nn_outputs_path=os.path.join(args.folder, "outputs"), experiment_out_path=exper_output_folder, device=args.device)
@@ -74,9 +77,41 @@ def ens_evaluation():
             lin_ens_df[networks] = mask
             lin_ens_df[["combination_size", "combination_id", "err_incons"]] = [sss, ss_i, err_inc]
             df_ens_pwc = pd.concat([df_ens_pwc, lin_ens_df], ignore_index=True)
+    
+    # In case there is a bug in the following code
+    df_ens_pwc.to_csv(os.path.join(exper_output_folder, "ens_pwc_metrics_new.csv"), index=False)
+    df_ens_cal.to_csv(os.path.join(exper_output_folder, "ens_cal_metrics_new.csv"), index=False)
+
+    old_df_ens_pwc = None
+    if os.path.exists(pwc_metrics_file):
+        old_df_ens_pwc = pd.read_csv(pwc_metrics_file)
+    
+    old_df_ens_cal = None
+    if os.path.exists(cal_metrics_file):
+        old_df_ens_cal = pd.read_csv(cal_metrics_file)    
+    
+    if old_df_ens_pwc is not None:
+        for sss in set(old_df_ens_pwc["combination_size"]):
+            if sss not in df_ens_pwc["combination_size"]:
+                continue
             
-    df_ens_pwc.to_csv(os.path.join(exper_output_folder, "ens_pwc_metrics.csv"), index=False)
-    df_ens_cal.to_csv(os.path.join(exper_output_folder, "ens_cal_metrics.csv"), index=False)
+            max_old_comb_id = max(old_df_ens_pwc[old_df_ens_pwc["combination_size"] == sss]["combination_id"])
+            df_ens_pwc.loc[df_ens_pwc["combination_size"] == sss, "combination_id"] += max_old_comb_id
+        
+        df_ens_pwc = pd.concat([old_df_ens_pwc, df_ens_pwc], ignore_index=True)
+        
+    if old_df_ens_cal is not None:
+        for sss in set(old_df_ens_cal["combination_size"]):
+            if sss not in df_ens_cal["combination_size"]:
+                continue
+                
+            max_old_comb_id = max(old_df_ens_cal[old_df_ens_cal["combination_size"] == sss]["combination_id"])
+            df_ens_cal.loc[df_ens_cal["combination_size"] == sss, "combination_id"] += max_old_comb_id
+            
+        df_ens_cal = pd.concat([old_df_ens_cal, df_ens_cal], ignore_index=True)
+    
+    df_ens_pwc.to_csv(pwc_metrics_file, index=False)
+    df_ens_cal.to_csv(cal_metrics_file, index=False)
     
 if __name__ == "__main__":
     ens_evaluation()
