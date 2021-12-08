@@ -237,6 +237,7 @@ def calibrating_ens_train_save(predictors, targets, test_predictors, device, out
         ens = CalibrationEnsemble(c=predictors.shape[0], k=predictors.shape[2], device=device, dtp=dtp)
         if load_existing_models and os.path.exists(model_file):
             ens.load(model_file)
+            model_loaded = True
         else:
             ens.fit(MP=predictors, tar=targets, calibration_method=cal_m, verbose=verbose)
 
