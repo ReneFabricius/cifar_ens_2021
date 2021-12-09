@@ -11,7 +11,7 @@ from utils import load_networks_outputs, evaluate_ens, evaluate_networks, linear
 
 
 def ens_evaluation():
-    combining_methods = ["lda", "logreg", "logreg_no_interc", "logreg_sweep_C", "logreg_no_interc_sweep_C"]
+    combining_methods = ["lda", "logreg", "logreg_no_interc", "logreg_sweep_C", "logreg_no_interc_sweep_C", "average"]
     coupling_methods = ["m1", "m2", "bc"]
     
     parser = argparse.ArgumentParser()
