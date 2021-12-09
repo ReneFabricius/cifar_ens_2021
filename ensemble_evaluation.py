@@ -102,7 +102,7 @@ def ens_evaluation():
                 print("Warning, networks {} not present in provided networks outputs".format(not_in))
                 continue
             process_combination(comb=comb)
-        
+
     # In case there is a bug in the following code
     df_ens_pwc.to_csv(os.path.join(exper_output_folder, "ens_pwc_metrics_new.csv"), index=False)
     df_ens_cal.to_csv(os.path.join(exper_output_folder, "ens_cal_metrics_new.csv"), index=False)
@@ -123,6 +123,10 @@ def ens_evaluation():
             max_old_comb_id = max(old_df_ens_pwc[old_df_ens_pwc["combination_size"] == sss]["combination_id"])
             df_ens_pwc.loc[df_ens_pwc["combination_size"] == sss, "combination_id"] += max_old_comb_id
         
+        for net in networks:
+            if net not in old_df_ens_pwc.columns:
+                old_df_ens_pwc[net] = False
+        
         df_ens_pwc = pd.concat([old_df_ens_pwc, df_ens_pwc], ignore_index=True)
         
     if old_df_ens_cal is not None:
@@ -132,6 +136,10 @@ def ens_evaluation():
                 
             max_old_comb_id = max(old_df_ens_cal[old_df_ens_cal["combination_size"] == sss]["combination_id"])
             df_ens_cal.loc[df_ens_cal["combination_size"] == sss, "combination_id"] += max_old_comb_id
+            
+        for net in networks:
+            if net not in old_df_ens_cal.columns:
+                old_df_ens_cal[net] = False
             
         df_ens_cal = pd.concat([old_df_ens_cal, df_ens_cal], ignore_index=True)
     
