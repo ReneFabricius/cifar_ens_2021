@@ -86,7 +86,7 @@ def ens_evaluation():
     
     for sss in [int(ens_sz) for ens_sz in args.ens_sizes]:
         print("Processing combinations of {} networks".format(sss))
-        size_combs = combinations(networks, sss)
+        size_combs = list(combinations(networks, sss))
         for ss_i, ss in enumerate(size_combs):
             print("Progress {}%".format(100 * (ss_i + 1) // len(size_combs)), end="\r")
             process_combination(comb=ss, comb_id=ss_i)
