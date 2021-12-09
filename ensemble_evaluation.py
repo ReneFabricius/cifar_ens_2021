@@ -90,7 +90,10 @@ def ens_evaluation():
         for ss_i, ss in enumerate(size_combs):
             print("Progress {}%".format(100 * (ss_i + 1) // len(size_combs)), end="\r")
             process_combination(comb=ss, comb_id=ss_i)
-                
+        
+        df_ens_pwc.to_csv(os.path.join(exper_output_folder, "ens_pwc_metrics_temp.csv"), index=False)
+        df_ens_cal.to_csv(os.path.join(exper_output_folder, "ens_cal_metrics_temp.csv"), index=False)
+       
     if args.ens_comb_file != "" and os.path.exists(args.ens_comb_file):
         print("Loading ensemble combinations from {}".format(args.ens_comb_file))
         ens_combs = pd.read_csv(args.ens_comb_file)
