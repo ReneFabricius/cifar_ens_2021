@@ -1,4 +1,5 @@
 import os
+from pickle import load
 import numpy as np
 import pandas as pd
 import torch
@@ -113,7 +114,7 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
                              coupling_methods,
                              double_accuracy=False, prefix='', verbose=0, test_normality=True,
                              save_R_mats=False, val_predictors=None, val_targets=None,
-                             load_existing_models=False):
+                             load_existing_models="no"):
     """
     Trains LinearWeightedEnsemble using all possible combinations of provided combining_methods and coupling_methods.
     Combines outputs given in test_predictors, saves them and returns them in an instance of LinearPWEnsOutputs.
@@ -150,25 +151,27 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
         if co_m_fun.req_val and (val_predictors is None or val_targets is None):
             print("Combining method {} requires validation data, but val_predictors or val_targets are None".format(co_m))
             continue
-        
+        model_exists = os.path.exists(model_file)
+        if model_exists and load_existing_models == "lazy":
+            continue
         ens = WeightedLinearEnsemble(c=predictors.shape[0], k=predictors.shape[2], device=device, dtp=dtp)
-        if load_existing_models and os.path.exists(model_file):
-            ens.load(model_file)
-            model_loaded = True
-        else:
+        if not model_exists or load_existing_models == "no":
             if co_m_fun.req_val:
                 ens.fit(MP=predictors, tar=targets, verbose=verbose, test_normality=test_normality, combining_method=co_m, penultimate=True,
                         MP_val=val_predictors, tar_val=val_targets)
             else:
                 ens.fit(MP=predictors, tar=targets, verbose=verbose, test_normality=test_normality, combining_method=co_m, penultimate=True)
+        else:
+            ens.load(model_file)
+            model_loaded = True
 
-        ens.save_coefs_csv(
-            os.path.join(out_path, prefix + co_m + '_coefs_{}.csv'.format("double" if double_accuracy else "float")))
-        if test_normality:
-            ens.save_pvals(
-                os.path.join(out_path, prefix + 'p_values_{}.npy'.format("double" if double_accuracy else "float")))
         if not model_loaded:
             ens.save(model_file)
+            ens.save_coefs_csv(
+                os.path.join(out_path, prefix + co_m + '_coefs_{}.csv'.format("double" if double_accuracy else "float")))
+            if test_normality:
+                ens.save_pvals(
+                    os.path.join(out_path, prefix + 'p_values_{}.npy'.format("double" if double_accuracy else "float")))
 
         for cp_mi, cp_m in enumerate(coupling_methods):
             fin = False
@@ -213,7 +216,7 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
 
 def calibrating_ens_train_save(predictors, targets, test_predictors, device, out_path, calibrating_methods,
                                networks, double_accuracy=False, prefix='', verbose=0,
-                               load_existing_models=False):
+                               load_existing_models="no"):
     """
 
     :param predictors: Penultimate layer outputs or logits to train ensemble on.
@@ -234,12 +237,16 @@ def calibrating_ens_train_save(predictors, targets, test_predictors, device, out
         model_file = os.path.join(out_path,
                               prefix + cal_m.__name__ + '_model_{}'.format("double" if double_accuracy else "float"))
         model_loaded = False
+        model_exists = os.path.exists(model_file)
+        if model_exists and load_existing_models == "lazy":
+            continue
+        
         ens = CalibrationEnsemble(c=predictors.shape[0], k=predictors.shape[2], device=device, dtp=dtp)
-        if load_existing_models and os.path.exists(model_file):
+        if not model_exists or load_existing_models == "no":
+            ens.fit(MP=predictors, tar=targets, calibration_method=cal_m, verbose=verbose)
+        else:
             ens.load(model_file)
             model_loaded = True
-        else:
-            ens.fit(MP=predictors, tar=targets, calibration_method=cal_m, verbose=verbose)
 
         ens.save_coefs_csv(
             os.path.join(out_path,
@@ -561,6 +568,9 @@ def evaluate_ens(ens_outputs, tar):
         for co_m in combining_methods:
             for cp_m in coupling_methods:
                 pred = ens_outputs.get(co_m, cp_m)
+                if pred is None:
+                    continue
+                
                 acc = compute_acc_topk(pred=pred, tar=tar, k=1)
                 nll = compute_nll(pred=pred, tar=tar)
                 ece = ECE_sweep(pred=pred, tar=tar)
@@ -579,6 +589,9 @@ def evaluate_ens(ens_outputs, tar):
 
         for mi, cal_m in enumerate(calibration_methods):
             pred = ens_outputs.get(calibrating_method=cal_m)
+            if pred is None:
+                continue
+            
             acc = compute_acc_topk(pred=pred, tar=tar, k=1)
             nll = compute_nll(pred=pred, tar=tar)
             ece = ECE_sweep(pred=pred, tar=tar)
