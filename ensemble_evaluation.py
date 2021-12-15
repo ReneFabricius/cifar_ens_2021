@@ -50,9 +50,9 @@ def ens_evaluation():
     
     def get_combination_id(comb):
         mask = [net in comb for net in networks]
-        cal_ids = list(df_ens_cal[(df_ens_cal[networks] == mask).prod(axis=1)]["combination_id"])
+        cal_ids = list(df_ens_cal[(df_ens_cal[networks] == mask).prod(axis=1) == 1]["combination_id"])
         cal_id = cal_ids[0] if len(cal_ids) > 0 else None
-        pwc_ids = list(df_ens_pwc[(df_ens_pwc[networks] == mask).prod(axis=1)]["combination_id"])
+        pwc_ids = list(df_ens_pwc[(df_ens_pwc[networks] == mask).prod(axis=1) == 1]["combination_id"])
         pwc_id = pwc_ids[0] if len(pwc_ids) > 0 else None
         if cal_id is not None and pwc_id is not None:
             if cal_id == pwc_id:
