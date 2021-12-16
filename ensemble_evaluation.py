@@ -126,7 +126,7 @@ def ens_evaluation():
         print("Processing combinations of {} networks".format(sss))
         size_combs = list(combinations(networks, sss))
         for ss_i, ss in enumerate(size_combs):
-            print("Progress {}%".format(100 * (ss_i + 1) // len(size_combs)), end="\r")
+            print("Processing combination {} out of {}.".format(ss_i + 1, len(size_combs)))
             process_combination(comb=ss)
         
         df_ens_pwc.to_csv(os.path.join(exper_output_folder, "ens_pwc_metrics_temp.csv"), index=False)
@@ -136,7 +136,7 @@ def ens_evaluation():
         print("Loading ensemble combinations from {}".format(args.ens_comb_file))
         ens_combs = pd.read_csv(args.ens_comb_file)
         for ri, row in ens_combs.iterrows():
-            print("Progress {}%".format(100 * (ri + 1) // len(ens_combs)), end="\r")
+            print("Processing combination {} out of {}.".format(ri + 1, len(ens_combs)))
             comb = list(ens_combs.columns[row])
             not_in = set(comb) - set(networks)
             if len(not_in) != 0:
