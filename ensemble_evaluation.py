@@ -75,8 +75,8 @@ def ens_evaluation():
         if pwc_id is not None:
             return pwc_id
         
-        max_cal = max([0] + list(df_ens_cal[df_ens_cal["combination_size"] == len(comb)]["combination_id"]))
-        max_pwc = max([0] + list(df_ens_pwc[df_ens_pwc["combination_size"] == len(comb)]["combination_id"]))
+        max_cal = max([0] + list(df_ens_cal[df_ens_cal["combination_size"] == len(comb)]["combination_id"])) if df_ens_cal.shape[0] > 0 else 0
+        max_pwc = max([0] + list(df_ens_pwc[df_ens_pwc["combination_size"] == len(comb)]["combination_id"])) if df_ens_pwc.shape[0] > 0 else 0
         return max(max_cal, max_pwc) + 1
     
     def process_combination(comb):
