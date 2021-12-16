@@ -23,6 +23,8 @@ def ens_evaluation():
     parser.add_argument('-verbose', default=0, type=int, help="Level of verbosity")
     parser.add_argument('-load_existing_models', type=str, choices=["no", "recalculate", "lazy"], default="no", help="Loading of present models. If no - all computations are performed again, \
                         if recalculate - existing models are loaded, but metrics are calculated again, if lazy - existing models are skipped.")
+    parser.add_argument('-compute_pairwise_metrics', dest="compute_pwm", action="store_true", help="Whether to compute pairwise accuracies and calibration")
+    parser.set_defaults(compute_pwm=False)
     args = parser.parse_args()
     
     lin_ens_train_size = 50 * args.cifar
@@ -42,18 +44,26 @@ def ens_evaluation():
     if os.path.exists(cal_metrics_file) and args.load_existing_models == "lazy":
         df_ens_cal = pd.read_csv(cal_metrics_file)
     else:
-        df_ens_cal = pd.DataFrame(columns=(*networks,"combination_size", "combination_id", "calibrating_method", "accuracy", "nll", "ece", "err_incons", "all_cor"))
+        df_ens_cal = pd.DataFrame()
     if os.path.exists(pwc_metrics_file) and args.load_existing_models == "lazy":
         df_ens_pwc = pd.read_csv(pwc_metrics_file)
     else:
-        df_ens_pwc = pd.DataFrame(columns=(*networks, "combination_size", "combination_id", "combining_method", "coupling_method", "accuracy", "nll", "ece", "err_incons", "all_cor"))
+        df_ens_pwc = pd.DataFrame()
     
     def get_combination_id(comb):
         mask = [net in comb for net in networks]
-        cal_ids = list(df_ens_cal[(df_ens_cal[networks] == mask).prod(axis=1) == 1]["combination_id"])
-        cal_id = cal_ids[0] if len(cal_ids) > 0 else None
-        pwc_ids = list(df_ens_pwc[(df_ens_pwc[networks] == mask).prod(axis=1) == 1]["combination_id"])
-        pwc_id = pwc_ids[0] if len(pwc_ids) > 0 else None
+        if df_ens_cal.shape[0] > 0:
+            cal_ids = list(df_ens_cal[(df_ens_cal[networks] == mask).prod(axis=1) == 1]["combination_id"])
+            cal_id = cal_ids[0] if len(cal_ids) > 0 else None
+        else:
+            cal_id = None
+        
+        if df_ens_pwc.shape[0] > 0:
+            pwc_ids = list(df_ens_pwc[(df_ens_pwc[networks] == mask).prod(axis=1) == 1]["combination_id"])
+            pwc_id = pwc_ids[0] if len(pwc_ids) > 0 else None
+        else:
+            pwc_id = None
+            
         if cal_id is not None and pwc_id is not None:
             if cal_id == pwc_id:
                 return cal_id
@@ -103,7 +113,8 @@ def ens_evaluation():
                                                     device=args.device, out_path=exper_output_folder, combining_methods=combining_methods,
                                                     coupling_methods=coupling_methods, prefix=nets_string,
                                                     verbose=args.verbose, test_normality=False, val_predictors=val_pred,
-                                                    val_targets=val_lab, load_existing_models=args.load_existing_models)
+                                                    val_targets=val_lab, load_existing_models=args.load_existing_models,
+                                                    output_R_mats=args.compute_pwm)
         
         lin_ens_df = evaluate_ens(ens_outputs=lin_ens_outputs, tar=test_lab)
         if lin_ens_df.shape[0] > 0:

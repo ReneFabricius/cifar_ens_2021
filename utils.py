@@ -60,22 +60,34 @@ def load_networks_outputs(nn_outputs_path, experiment_out_path=None, device='cpu
 
 
 class LinearPWEnsOutputs:
-    def __init__(self, combining_methods, coupling_methods):
+    def __init__(self, combining_methods, coupling_methods, store_R=False):
         self.comb_m_ = combining_methods
         self.coup_m_ = coupling_methods
 
         self.outputs_ = [[None for cp_m in coupling_methods] for co_m in combining_methods]
+        
+        self.has_R_ = store_R
+        if store_R:
+            self.R_mats_ = [None for co_m in combining_methods]
 
-    def store(self, combining_method, coupling_method, output):
+    def store(self, combining_method, coupling_method, output, R_mat=None):
         co_i = self.comb_m_.index(combining_method)
         cp_i = self.coup_m_.index(coupling_method)
         self.outputs_[co_i][cp_i] = output
+        if self.has_R_ and R_mat is not None:
+            self.R_mats_[co_i] = R_mat
 
     def get(self, combining_method, coupling_method):
         co_i = self.comb_m_.index(combining_method)
         cp_i = self.coup_m_.index(coupling_method)
         return self.outputs_[co_i][cp_i]
     
+    def get_R(self, combining_method):
+        if not self.has_R_:
+            return None
+        co_i = self.comb_m_.index(combining_method)
+        return self.R_mats_[co_i]
+        
     def get_combining_methods(self):
         return self.comb_m_
     
@@ -113,7 +125,7 @@ class CalibratingEnsOutputs:
 def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_path, combining_methods,
                              coupling_methods,
                              double_accuracy=False, prefix='', verbose=0, test_normality=True,
-                             save_R_mats=False, val_predictors=None, val_targets=None,
+                             save_R_mats=False, output_R_mats=False, val_predictors=None, val_targets=None,
                              load_existing_models="no"):
     """
     Trains LinearWeightedEnsemble using all possible combinations of provided combining_methods and coupling_methods.
@@ -142,7 +154,7 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
         LinearPWEnsOutputs: Obtained test predictions.
     """
     dtp = torch.float64 if double_accuracy else torch.float32
-    ens_test_results = LinearPWEnsOutputs(combining_methods, coupling_methods)
+    ens_test_results = LinearPWEnsOutputs(combining_methods, coupling_methods, store_R=output_R_mats)
     
     for co_mi, co_m in enumerate(combining_methods):
         model_file = os.path.join(out_path, prefix + co_m + '_model_{}'.format("double" if double_accuracy else "float"))
@@ -183,7 +195,7 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
                     torch.cuda.empty_cache()
                     print('Trying again, try {}, batch size {}'.format(tries, cur_b))
                 try:
-                    ens_test_out_method = ens.predict_proba(test_predictors, cp_m, output_R=save_R_mats,
+                    ens_test_out_method = ens.predict_proba(test_predictors, cp_m, output_R=cp_mi == 0 and (save_R_mats or output_R_mats),
                                                             batch_size=cur_b)
                     fin = True
                 except RuntimeError as rerr:
@@ -198,14 +210,14 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
                 print('Unsuccessful')
                 return -1
 
-            if save_R_mats:
+            if cp_mi == 0 and (save_R_mats or output_R_mats):
                 ens_test_out_method, ens_test_R = ens_test_out_method
-                if cp_mi == 0:
+                if save_R_mats:
                     np.save(os.path.join(out_path, "{}ens_test_R_co_{}_prec_{}.npy".format(prefix, co_m,
                                                                                            ("double" if double_accuracy else "float"))),
                             ens_test_R.detach().cpu().numpy())
 
-            ens_test_results.store(co_m, cp_m, ens_test_out_method)
+            ens_test_results.store(co_m, cp_m, ens_test_out_method, R_mat=ens_test_R if cp_mi == 0 and output_R_mats else None)
             np.save(os.path.join(out_path,
                                  "{}ens_test_outputs_co_{}_cp_{}_prec_{}.npy".format(prefix, co_m, cp_m,
                                                                                      ("double" if double_accuracy else "float"))),
@@ -563,6 +575,8 @@ def evaluate_ens(ens_outputs, tar):
     if isinstance(ens_outputs, LinearPWEnsOutputs):
         df_ens = pd.DataFrame(columns=("combining_method", "coupling_method", "accuracy", "nll", "ece"))
         df_i = 0
+        pw_dfs = []
+        
         combining_methods = ens_outputs.get_combining_methods()
         coupling_methods = ens_outputs.get_coupling_methods()
         for co_m in combining_methods:
@@ -576,6 +590,15 @@ def evaluate_ens(ens_outputs, tar):
                 ece = ECE_sweep(pred=pred, tar=tar)
                 df_ens.loc[df_i] = [co_m, cp_m, acc, nll, ece]
                 df_i += 1
+
+            if ens_outputs.has_R_:
+                pw_metrics = compute_pw_metrics(R=ens_outputs.get_R(combining_method=co_m), tar=tar)
+                pw_metrics["combining_method"] = co_m
+                pw_dfs.append(pw_metrics)
+
+        if ens_outputs.has_R_:
+            df_ens_pw = pd.concat(pw_dfs, ignore_index=True) 
+            df_ens = df_ens.join(df_ens_pw.set_index("combining_method", on="combining_method"))
         
         return df_ens
 
@@ -610,3 +633,44 @@ def evaluate_ens(ens_outputs, tar):
     else:
         print("Unsupported ensemble output format")
         return None
+
+
+def compute_pw_metrics(R, tar):
+    """Computes pairwise accuracies and calibration for R matrix.
+
+    Args:
+        R (torch.tensor): Matrices of pairwise probabilities. Shape n × k × k, where n is number of samples and k in number of classes.
+        tar (torch.tensor): Correct class labels. Shape n.
+    """
+    n, k, k = R.shape
+    eces =[]
+    accs = []
+    for fc in range(k):
+        for sc in range(fc + 1, k):
+            sample_mask = (tar == fc) + (tar == sc)
+            pw_pred = R[sample_mask][:, [fc, sc], [sc, fc]]
+            pw_tar = tar[sample_mask]
+            mask_fc = pw_tar == fc
+            mask_sc = pw_tar == sc
+            pw_tar[mask_fc] = 0
+            pw_tar[mask_sc] = 1
+            acc = compute_acc_topk(pred=pw_pred, tar=pw_tar, k=1)
+            ece = ECE_sweep(pred=pw_pred, tar=pw_tar)
+            eces.append(ece)
+            accs.append(acc)
+    
+    eces = torch.tensor(eces)
+    accs = torch.tensor(accs)
+    ece_mean = torch.mean(eces).item()
+    ece_var = torch.var(eces).item()
+    ece_min = torch.min(eces).item()
+    ece_max = torch.max(eces).item()
+    acc_mean = torch.mean(accs).item()
+    acc_var = torch.var(accs).item()
+    acc_min = torch.min(accs).item()
+    acc_max = torch.max(accs).item()
+    
+    df = pd.DataFrame({"pw_acc_mean": [acc_mean], "pw_acc_var": [acc_var], "pw_acc_min": [acc_min], "pw_acc_max": [acc_max],
+                       "pw_ece_mean": [ece_mean], "pw_ece_var": [ece_var], "pw_ece_min": [ece_min], "pw_ece_max": [ece_max]})
+    
+    return df
