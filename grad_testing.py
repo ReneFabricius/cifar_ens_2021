@@ -83,7 +83,7 @@ def test_grad():
                             train_time]
             df_i += 1
             
-            test_string = train_string + "_cpte_{}".format(*pars, cp_m_test)
+            test_string = train_string + "_cpte_{}".format(cp_m_test)
             np.save(os.path.join(exp_outputs, "test_outputs_{}.npy".format(test_string)), test_pred.cpu().numpy())
             
         df.to_csv(exp_df, index=False)
