@@ -4,6 +4,7 @@ import os
 from itertools import product
 import pandas as pd
 import numpy as np
+from timeit import default_timer as timer
 
 from weensembles.WeightedLinearEnsemble import WeightedLinearEnsemble
 from weensembles.CombiningMethods import grad_comb
@@ -43,13 +44,17 @@ def test_grad():
     df = pd.DataFrame(columns=("coupling_method_train", "coupling_method_test", 
                                "learning_rate", "momentum", "batch_size", "epochs",
                                "train_acc", "train_nll", "train_ece",
-                               "test_acc", "test_nll", "test_ece"))
+                               "test_acc", "test_nll", "test_ece",
+                               "train_time"))
     df_i = 0
     for pars in product(lrs, mmts, bszs, epochs, args.coupling_methods):
+        start = timer()
         coefs = grad_comb(X=net_outputs["val_outputs"], y=net_outputs["val_labels"], wle=wle,
                           coupling_method=pars[4], verbose=args.verbose, lr=pars[0], momentum=pars[1],
                           batch_sz=pars[2], epochs=pars[3], test_period=10,
                           return_coefs=True)
+        end = timer()
+        train_time = end - start
         
         train_string = "lr_{}_mmt_{}_bsz_{}_e_{}_cptr_{}".format(*pars)
         print("Saving coefficients")
@@ -74,7 +79,8 @@ def test_grad():
             df.loc[df_i] = [pars[4], cp_m_test,
                             pars[0], pars[1], pars[2], pars[3],
                             train_acc, train_nll, train_ece,
-                            test_acc, test_nll, test_ece]
+                            test_acc, test_nll, test_ece,
+                            train_time]
             df_i += 1
             
             test_string = train_string + "_cpte_{}".format(*pars, cp_m_test)
