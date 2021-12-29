@@ -4,6 +4,7 @@ from itertools import combinations
 import pandas as pd
 from sklearn.model_selection import train_test_split
 import numpy as np
+import torch
 
 from weensembles.CalibrationMethod import TemperatureScaling
 from weensembles.predictions_evaluation import compute_error_inconsistency
@@ -11,7 +12,9 @@ from utils import load_networks_outputs, evaluate_ens, evaluate_networks, linear
 
 
 def ens_evaluation():
-    combining_methods = ["lda", "logreg", "logreg_no_interc", "logreg_sweep_C", "logreg_no_interc_sweep_C", "average", "cal_average", "prob_average", "cal_prob_average"]
+    combining_methods = [#"lda", "logreg", "logreg_no_interc", "logreg_sweep_C", "logreg_no_interc_sweep_C",
+                         "average", "cal_average", "prob_average", "cal_prob_average",
+                         "grad_m1", "grad_m2", "grad_bc"]
     coupling_methods = ["m1", "m2", "bc", "sbt"]
     
     parser = argparse.ArgumentParser()
@@ -28,6 +31,7 @@ def ens_evaluation():
     args = parser.parse_args()
     
     lin_ens_train_size = 50 * args.cifar
+    dtp = torch.float32
     exper_output_folder = os.path.join(args.folder, "exp_ensemble_evaluation")
     if not os.path.exists(exper_output_folder):
         os.mkdir(exper_output_folder)
@@ -36,7 +40,8 @@ def ens_evaluation():
     pwc_metrics_file = os.path.join(exper_output_folder, "ens_pwc_metrics.csv")
 
     print("Loading networks outputs")
-    net_outputs = load_networks_outputs(nn_outputs_path=os.path.join(args.folder, "outputs"), experiment_out_path=exper_output_folder, device=args.device)
+    net_outputs = load_networks_outputs(nn_outputs_path=os.path.join(args.folder, "outputs"), experiment_out_path=exper_output_folder,
+                                        device=args.device, dtype=dtp)
     df_net = evaluate_networks(net_outputs)
     df_net.to_csv(os.path.join(exper_output_folder, "net_metrics.csv"), index=False)
     

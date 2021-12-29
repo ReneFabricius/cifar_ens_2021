@@ -12,11 +12,13 @@ from weensembles.CalibrationEnsemble import CalibrationEnsemble
 from weensembles.CombiningMethods import comb_picker
 
 
-def load_npy_arr(file, device):
-    return torch.from_numpy(np.load(file)).to(torch.device(device))
+def load_npy_arr(file, device, dtype):
+    arr = torch.from_numpy(np.load(file)).to(device=torch.device(device), dtype=dtype)
+    arr.requires_grad_(False)
+    return arr
 
 
-def load_networks_outputs(nn_outputs_path, experiment_out_path=None, device='cpu'):
+def load_networks_outputs(nn_outputs_path, experiment_out_path=None, device='cpu', dtype=torch.float):
     """
     Loads network outputs for single replication. Dimensions in the output tensors are network, sample, class.
     :param nn_outputs_path: replication outputs path.
@@ -35,24 +37,24 @@ def load_networks_outputs(nn_outputs_path, experiment_out_path=None, device='cpu
 
     test_outputs = []
     for net in networks:
-        test_outputs.append(load_npy_arr(os.path.join(nn_outputs_path, net, 'test_outputs.npy'), device).
+        test_outputs.append(load_npy_arr(os.path.join(nn_outputs_path, net, 'test_outputs.npy'), device=device, dtype=dtype).
                             unsqueeze(0))
     test_outputs = torch.cat(test_outputs, 0)
-    test_labels = load_npy_arr(os.path.join(nn_outputs_path, networks[0], 'test_labels.npy'), device)
+    test_labels = load_npy_arr(os.path.join(nn_outputs_path, networks[0], 'test_labels.npy'), device=device, dtype=torch.long)
 
     train_outputs = []
     for net in networks:
-        train_outputs.append(load_npy_arr(os.path.join(nn_outputs_path, net, 'train_outputs.npy'), device).
+        train_outputs.append(load_npy_arr(os.path.join(nn_outputs_path, net, 'train_outputs.npy'), device=device, dtype=dtype).
                              unsqueeze(0))
     train_outputs = torch.cat(train_outputs, 0)
-    train_labels = load_npy_arr(os.path.join(nn_outputs_path, networks[0], 'train_labels.npy'), device)
+    train_labels = load_npy_arr(os.path.join(nn_outputs_path, networks[0], 'train_labels.npy'), device=device, dtype=torch.long)
 
     val_outputs = []
     for net in networks:
-        val_outputs.append(load_npy_arr(os.path.join(nn_outputs_path, net, 'val_outputs.npy'), device).
+        val_outputs.append(load_npy_arr(os.path.join(nn_outputs_path, net, 'val_outputs.npy'), device=device, dtype=dtype).
                            unsqueeze(0))
     val_outputs = torch.cat(val_outputs, 0)
-    val_labels = load_npy_arr(os.path.join(nn_outputs_path, networks[0], 'val_labels.npy'), device)
+    val_labels = load_npy_arr(os.path.join(nn_outputs_path, networks[0], 'val_labels.npy'), device=device, dtype=torch.long)
 
     return {"train_outputs": train_outputs, "train_labels": train_labels, "val_outputs": val_outputs,
             "val_labels": val_labels, "test_outputs": test_outputs, "test_labels": test_labels,
@@ -157,10 +159,12 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
     ens_test_results = LinearPWEnsOutputs(combining_methods, coupling_methods, store_R=output_R_mats)
     
     for co_mi, co_m in enumerate(combining_methods):
+        if verbose > 0:
+            print("Processing combining method {}".format(co_m))
         model_file = os.path.join(out_path, prefix + co_m + '_model_{}'.format("double" if double_accuracy else "float"))
         model_loaded = False
-        co_m_fun = comb_picker(co_m)
-        if co_m_fun.req_val and (val_predictors is None or val_targets is None):
+        co_m_fun = comb_picker(co_m, device=device, dtype=dtp)
+        if co_m_fun.req_val_ and (val_predictors is None or val_targets is None):
             print("Combining method {} requires validation data, but val_predictors or val_targets are None".format(co_m))
             continue
         model_exists = os.path.exists(model_file)
@@ -168,11 +172,11 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
             continue
         ens = WeightedLinearEnsemble(c=predictors.shape[0], k=predictors.shape[2], device=device, dtp=dtp)
         if not model_exists or load_existing_models == "no":
-            if co_m_fun.req_val:
-                ens.fit(MP=predictors, tar=targets, verbose=verbose, test_normality=test_normality, combining_method=co_m, penultimate=True,
+            if co_m_fun.req_val_:
+                ens.fit(MP=predictors, tar=targets, verbose=verbose, test_normality=test_normality, combining_method=co_m,
                         MP_val=val_predictors, tar_val=val_targets)
             else:
-                ens.fit(MP=predictors, tar=targets, verbose=verbose, test_normality=test_normality, combining_method=co_m, penultimate=True)
+                ens.fit(MP=predictors, tar=targets, verbose=verbose, test_normality=test_normality, combining_method=co_m)
         else:
             ens.load(model_file)
             model_loaded = True
@@ -246,6 +250,8 @@ def calibrating_ens_train_save(predictors, targets, test_predictors, device, out
     ens_test_results = CalibratingEnsOutputs(calibrating_methods=[cal_m.__name__ for cal_m in calibrating_methods],
                                              networks=networks)
     for cal_mi, cal_m in enumerate(calibrating_methods):
+        if verbose > 0:
+            print("Processing calibrating method {}".format(cal_m.__name__))
         model_file = os.path.join(out_path,
                               prefix + cal_m.__name__ + '_model_{}'.format("double" if double_accuracy else "float"))
         model_loaded = False
