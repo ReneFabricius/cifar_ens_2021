@@ -67,6 +67,7 @@ def ens_exp():
         net_df_repli["repli"] = repli
         df_net = pd.concat([df_net, net_df_repli], ignore_index=True)
 
+        test_outputs = net_outputs["test_outputs"].to(device=torch_dev)
         test_labels = net_outputs["test_labels"].to(device=torch_dev)
 
         train_set_size = len(net_outputs["train_labels"])
@@ -103,7 +104,7 @@ def ens_exp():
                 print_memory_statistics()
 
                 fold_ens_results = linear_pw_ens_train_save(predictors=fold_pred, targets=fold_lab,
-                                                            test_predictors=net_outputs["test_outputs"], device=torch_dev,
+                                                            test_predictors=test_outputs, device=torch_dev,
                                                             out_path=par["out_fold"],
                                                             combining_methods=args.combining_methods,
                                                             coupling_methods=args.coupling_methods, prefix="fold_{}_".format(fold_i),
