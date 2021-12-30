@@ -97,7 +97,7 @@ def ens_exp():
                         np.array(fold_idxs))
                 fold_idxs = torch.from_numpy(fold_idxs).to(device=torch_dev_load, dtype=torch.long)
                 fold_pred = par["train_preds"][:, fold_idxs, :].to(device=torch_dev, dtype=torch_dtp)
-                fold_lab = par["train_labs"][fold_idxs].to(device=torch_dev, dtype=torch_dtp)
+                fold_lab = par["train_labs"][fold_idxs].to(device=torch_dev)
 
                 print("Memory before ensembling")
                 print_memory_statistics()
