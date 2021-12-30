@@ -16,9 +16,6 @@ VAL_TRAIN = 'val_training'
 
 
 def ens_exp():
-    coupling_methods = ["m1", "m2", "m2_iter", "bc"]
-    combining_methods = ["lda", "logreg", "logreg_no_interc"]
-
     parser = argparse.ArgumentParser()
     parser.add_argument('-folder', type=str, required=True, help='experiment root folder')
     parser.add_argument('-fold_size', type=int, default=500, required=True, help='LDA training set size')
@@ -27,7 +24,8 @@ def ens_exp():
     parser.add_argument('-device', type=str, default='cpu', help='device on which to execute the script')
     parser.add_argument('-save_R', dest='save_R', action='store_true',
                         help='Save R matrices entering into the coupling methods')
-    parser.add_argument('-no_save_R', dest='save_R', action='store_false')
+    parser.add_argument('-coupling_methods', nargs='+', default=["m2"], help='Coupling methods to use')
+    parser.add_argument('-combining_methods', nargs='+', default=["average"], help="Combining methods to use")
     parser.set_defaults(save_R=False)
     args = parser.parse_args()
 
@@ -107,8 +105,8 @@ def ens_exp():
                 fold_ens_results = linear_pw_ens_train_save(predictors=fold_pred, targets=fold_lab,
                                                             test_predictors=net_outputs["test_outputs"], device=torch_dev,
                                                             out_path=par["out_fold"],
-                                                            combining_methods=combining_methods,
-                                                            coupling_methods=coupling_methods, prefix="fold_{}_".format(fold_i),
+                                                            combining_methods=args.combining_methods,
+                                                            coupling_methods=args.coupling_methods, prefix="fold_{}_".format(fold_i),
                                                             verbose=False, test_normality=False,
                                                             save_R_mats=args.save_R)
 
@@ -127,5 +125,4 @@ def ens_exp():
 
 
 if __name__ == '__main__':
-    with torch.no_grad():
-        ens_exp()
+    ens_exp()
