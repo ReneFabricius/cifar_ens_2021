@@ -91,17 +91,11 @@ def ens_exp():
             for fold_i, (_, fold_idxs) in enumerate(par["skf"].split(np.zeros(len(par["train_labs"])),
                                                                par["train_labs"].detach().cpu().clone().numpy())):
 
-                print("Processing fold {}".format(fold_i))
-                print_memory_statistics(list_tensors=True)
-
                 np.save(os.path.join(par["out_fold"], '{}_lin_comb_{}_idx.npy'.format(fold_i, par["train_set"])),
                         np.array(fold_idxs))
                 fold_idxs = torch.from_numpy(fold_idxs).to(device=torch_dev_load, dtype=torch.long)
                 fold_pred = par["train_preds"][:, fold_idxs, :].to(device=torch_dev, dtype=torch_dtp)
                 fold_lab = par["train_labs"][fold_idxs].to(device=torch_dev)
-
-                print("Memory before ensembling")
-                print_memory_statistics()
 
                 fold_ens_results = linear_pw_ens_train_save(predictors=fold_pred, targets=fold_lab,
                                                             test_predictors=test_outputs, device=torch_dev,
@@ -118,8 +112,6 @@ def ens_exp():
                 df_ens = pd.concat([df_ens, ens_df_fold], ignore_index=True)
                 
                 del fold_ens_results
-                print("Memory after saving results")
-                print_memory_statistics()
 
     df_ens.to_csv(os.path.join(args.folder, 'ensemble_metrics.csv'), index=False)
     df_net.to_csv(os.path.join(args.folder, "net_metrics.csv"), index=False)
