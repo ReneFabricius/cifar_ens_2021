@@ -23,10 +23,6 @@ def ens_exp():
     parser.add_argument('-repl', type=int, default=1, help='number of replications')
     parser.add_argument('-cifar', default=100, type=int, help='cifar type (10 or 100)')
     parser.add_argument('-device', type=str, default='cpu', help='device on which to execute the script')
-    parser.add_argument('-save_R', dest='save_R', action='store_true',
-                        help='Save R matrices entering into the coupling methods')
-    parser.add_argument('-no_save_R', dest='save_R', action='store_false')
-    parser.set_defaults(save_R=False)
     args = parser.parse_args()
 
     df_ens = pd.DataFrame(columns=('repli', 'train_set', 'combining_method', 'coupling_method', 'accuracy', 'nll', 'ece'))
@@ -68,14 +64,12 @@ def ens_exp():
                                                        net_outputs["test_outputs"],
                                                        torch.device(args.device),
                                                        vt_out_path, combining_methods=combining_methods,
-                                                       coupling_methods=coupling_methods,
-                                                       save_R_mats=args.save_R)
+                                                       coupling_methods=coupling_methods)
 
         tt_test_ens_results = linear_pw_ens_train_save(co_m_train_outputs, co_m_train_labels, net_outputs["test_outputs"],
                                                        torch.device(args.device),
                                                        tt_out_path, combining_methods=combining_methods,
-                                                       coupling_methods=coupling_methods,
-                                                       save_R_mats=args.save_R)
+                                                       coupling_methods=coupling_methods)
 
         df_ens_repli_vt = evaluate_ens(ens_outputs=vt_test_ens_results, tar=net_outputs["test_labels"])
         df_ens_repli_tt = evaluate_ens(ens_outputs=tt_test_ens_results, tar=net_outputs["test_labels"])

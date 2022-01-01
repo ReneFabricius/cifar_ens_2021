@@ -12,7 +12,7 @@ from utils import load_networks_outputs, evaluate_ens, evaluate_networks, linear
 
 
 def ens_evaluation():
-    combining_methods = [#"lda", "logreg", "logreg_no_interc", "logreg_sweep_C", "logreg_no_interc_sweep_C",
+    combining_methods = ["lda", "logreg", "logreg_no_interc", "logreg_sweep_C", "logreg_no_interc_sweep_C",
                          "average", "cal_average", "prob_average", "cal_prob_average",
                          "grad_m1", "grad_m2", "grad_bc"]
     coupling_methods = ["m1", "m2", "bc", "sbt"]
@@ -117,7 +117,7 @@ def ens_evaluation():
         lin_ens_outputs = linear_pw_ens_train_save(predictors=lin_train_pred, targets=lin_train_lab, test_predictors=test_pred,
                                                     device=args.device, out_path=exper_output_folder, combining_methods=combining_methods,
                                                     coupling_methods=coupling_methods, prefix=nets_string,
-                                                    verbose=args.verbose, test_normality=False, val_predictors=val_pred,
+                                                    verbose=args.verbose, val_predictors=val_pred,
                                                     val_targets=val_lab, load_existing_models=args.load_existing_models,
                                                     output_R_mats=args.compute_pwm)
         

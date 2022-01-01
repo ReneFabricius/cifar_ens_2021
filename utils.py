@@ -126,8 +126,8 @@ class CalibratingEnsOutputs:
 
 def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_path, combining_methods,
                              coupling_methods,
-                             double_accuracy=False, prefix='', verbose=0, test_normality=True,
-                             save_R_mats=False, output_R_mats=False, val_predictors=None, val_targets=None,
+                             double_accuracy=False, prefix='', verbose=0,
+                             output_R_mats=False, val_predictors=None, val_targets=None,
                              load_existing_models="no"):
     """
     Trains LinearWeightedEnsemble using all possible combinations of provided combining_methods and coupling_methods.
@@ -163,7 +163,7 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
             print("Processing combining method {}".format(co_m))
         model_file = os.path.join(out_path, prefix + co_m + '_model_{}'.format("double" if double_accuracy else "float"))
         model_loaded = False
-        co_m_fun = comb_picker(co_m, device=device, dtype=dtp)
+        co_m_fun = comb_picker(co_m, c=0, k=0, device=device, dtype=dtp)
         if co_m_fun.req_val_ and (val_predictors is None or val_targets is None):
             print("Combining method {} requires validation data, but val_predictors or val_targets are None".format(co_m))
             continue
@@ -173,10 +173,10 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
         ens = WeightedLinearEnsemble(c=predictors.shape[0], k=predictors.shape[2], device=device, dtp=dtp)
         if not model_exists or load_existing_models == "no":
             if co_m_fun.req_val_:
-                ens.fit(MP=predictors, tar=targets, verbose=verbose, test_normality=test_normality, combining_method=co_m,
+                ens.fit(MP=predictors, tar=targets, verbose=verbose, combining_method=co_m,
                         MP_val=val_predictors, tar_val=val_targets)
             else:
-                ens.fit(MP=predictors, tar=targets, verbose=verbose, test_normality=test_normality, combining_method=co_m)
+                ens.fit(MP=predictors, tar=targets, verbose=verbose, combining_method=co_m)
         else:
             ens.load(model_file)
             model_loaded = True
@@ -185,9 +185,6 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
             ens.save(model_file)
             ens.save_coefs_csv(
                 os.path.join(out_path, prefix + co_m + '_coefs_{}.csv'.format("double" if double_accuracy else "float")))
-            if test_normality:
-                ens.save_pvals(
-                    os.path.join(out_path, prefix + 'p_values_{}.npy'.format("double" if double_accuracy else "float")))
 
         for cp_mi, cp_m in enumerate(coupling_methods):
             fin = False
@@ -199,7 +196,7 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
                     torch.cuda.empty_cache()
                     print('Trying again, try {}, batch size {}'.format(tries, cur_b))
                 try:
-                    ens_test_out_method = ens.predict_proba(test_predictors, cp_m, output_R=cp_mi == 0 and (save_R_mats or output_R_mats),
+                    ens_test_out_method = ens.predict_proba(test_predictors, cp_m,
                                                             batch_size=cur_b)
                     fin = True
                 except RuntimeError as rerr:
@@ -214,14 +211,7 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
                 print('Unsuccessful')
                 return -1
 
-            if cp_mi == 0 and (save_R_mats or output_R_mats):
-                ens_test_out_method, ens_test_R = ens_test_out_method
-                if save_R_mats:
-                    np.save(os.path.join(out_path, "{}ens_test_R_co_{}_prec_{}.npy".format(prefix, co_m,
-                                                                                           ("double" if double_accuracy else "float"))),
-                            ens_test_R.detach().cpu().numpy())
-
-            ens_test_results.store(co_m, cp_m, ens_test_out_method, R_mat=ens_test_R if cp_mi == 0 and output_R_mats else None)
+            ens_test_results.store(co_m, cp_m, ens_test_out_method, R_mat=None)
             np.save(os.path.join(out_path,
                                  "{}ens_test_outputs_co_{}_cp_{}_prec_{}.npy".format(prefix, co_m, cp_m,
                                                                                      ("double" if double_accuracy else "float"))),
