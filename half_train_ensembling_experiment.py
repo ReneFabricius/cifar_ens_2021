@@ -66,6 +66,7 @@ def ens_exp():
         net_df_repli = evaluate_networks(net_outputs)
         net_df_repli["repli"] = repli
         df_net = pd.concat([df_net, net_df_repli], ignore_index=True)
+        df_net.to_csv(os.path.join(args.folder, "net_metrics.csv"), index=False)
 
         test_outputs = net_outputs["test_outputs"].to(device=torch_dev)
         test_labels = net_outputs["test_labels"].to(device=torch_dev)
@@ -89,8 +90,8 @@ def ens_exp():
         for par in param_sets:
             print("Processing train set {}".format(par["train_set"]))
             for fold_i, (_, fold_idxs) in enumerate(par["skf"].split(np.zeros(len(par["train_labs"])),
-                                                               par["train_labs"].detach().cpu().clone().numpy())):
-
+                                                               par["train_labs"].detach().cpu().numpy())):
+                print("Processing fold {}".format(fold_i))
                 np.save(os.path.join(par["out_fold"], '{}_lin_comb_{}_idx.npy'.format(fold_i, par["train_set"])),
                         np.array(fold_idxs))
                 fold_idxs = torch.from_numpy(fold_idxs).to(device=torch_dev_load, dtype=torch.long)
@@ -113,8 +114,7 @@ def ens_exp():
                 
                 del fold_ens_results
 
-    df_ens.to_csv(os.path.join(args.folder, 'ensemble_metrics.csv'), index=False)
-    df_net.to_csv(os.path.join(args.folder, "net_metrics.csv"), index=False)
+        df_ens.to_csv(os.path.join(args.folder, 'ensemble_metrics.csv'), index=False)
 
 
 if __name__ == '__main__':
