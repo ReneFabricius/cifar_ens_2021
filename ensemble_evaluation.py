@@ -12,11 +12,6 @@ from utils import load_networks_outputs, evaluate_ens, evaluate_networks, linear
 
 
 def ens_evaluation():
-    combining_methods = ["lda", "logreg", "logreg_no_interc", "logreg_sweep_C", "logreg_no_interc_sweep_C",
-                         "average", "cal_average", "prob_average", "cal_prob_average",
-                         "grad_m1", "grad_m2", "grad_bc"]
-    coupling_methods = ["m1", "m2", "bc", "sbt"]
-    
     parser = argparse.ArgumentParser()
     parser.add_argument('-folder', type=str, help="Replication folder")
     parser.add_argument('-ens_sizes', nargs="+", default=[], help="Ensemble sizes to test")
@@ -27,6 +22,8 @@ def ens_evaluation():
     parser.add_argument('-load_existing_models', type=str, choices=["no", "recalculate", "lazy"], default="no", help="Loading of present models. If no - all computations are performed again, \
                         if recalculate - existing models are loaded, but metrics are calculated again, if lazy - existing models are skipped.")
     parser.add_argument('-compute_pairwise_metrics', dest="compute_pwm", action="store_true", help="Whether to compute pairwise accuracies and calibration")
+    parser.add_argument('-combining_methods', nargs='+', default=["average"], help="COmbining methods to use")
+    parser.add_argument('-coupling_methods', nargs='+', default=['m2'], help="Coupling methods to use")
     parser.set_defaults(compute_pwm=False)
     args = parser.parse_args()
     
@@ -115,8 +112,8 @@ def ens_evaluation():
             df_ens_cal = pd.concat([df_ens_cal, cal_ens_df], ignore_index=True)
 
         lin_ens_outputs = linear_pw_ens_train_save(predictors=lin_train_pred, targets=lin_train_lab, test_predictors=test_pred,
-                                                    device=args.device, out_path=exper_output_folder, combining_methods=combining_methods,
-                                                    coupling_methods=coupling_methods, prefix=nets_string,
+                                                    device=args.device, out_path=exper_output_folder, combining_methods=args.combining_methods,
+                                                    coupling_methods=args.coupling_methods, prefix=nets_string,
                                                     verbose=args.verbose, val_predictors=val_pred,
                                                     val_targets=val_lab, load_existing_models=args.load_existing_models,
                                                     output_R_mats=args.compute_pwm)

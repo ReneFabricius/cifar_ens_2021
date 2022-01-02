@@ -5,6 +5,7 @@ import pandas as pd
 import torch
 import regex as re
 import gc
+from weensembles.CouplingMethods import coup_picker
 
 from weensembles.WeightedLinearEnsemble import WeightedLinearEnsemble
 from weensembles.predictions_evaluation import ECE_sweep, compute_acc_topk, compute_nll
@@ -157,6 +158,16 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
     """
     dtp = torch.float64 if double_accuracy else torch.float32
     ens_test_results = LinearPWEnsOutputs(combining_methods, coupling_methods, store_R=output_R_mats)
+    
+    for co_m in combining_methods:
+        comb_m = comb_picker(co_m=co_m, c=0, k=0)
+        if comb_m is None:
+            raise ValueError("Unknown combining method: {}".format(co_m))
+    
+    for cp_m in coupling_methods:
+        coup_m = coup_picker(cp_m=cp_m)
+        if coup_m is None:
+            raise ValueError("Unknown coupling method: {}".format(cp_m))
     
     for co_mi, co_m in enumerate(combining_methods):
         if verbose > 0:
