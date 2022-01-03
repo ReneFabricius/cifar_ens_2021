@@ -1,5 +1,6 @@
 import os
 import argparse
+import sys
 from itertools import combinations
 import pandas as pd
 from sklearn.model_selection import train_test_split
@@ -87,7 +88,7 @@ def ens_evaluation():
         comb_id = get_combination_id(comb)
             
         mask = [net in comb for net in networks]
-        nets_string = '+'.join(comb) + "_"
+        nets_string = '+'.join(sorted(comb)) + "_"
         train_pred = net_outputs["train_outputs"][mask]
         val_pred = net_outputs["val_outputs"][mask]
         test_pred = net_outputs["test_outputs"][mask]
@@ -103,7 +104,8 @@ def ens_evaluation():
         
         cal_ens_outputs = calibrating_ens_train_save(predictors=val_pred, targets=val_lab, test_predictors=test_pred,
                                                         device=args.device, out_path=exper_output_folder, calibrating_methods=[TemperatureScaling],
-                                                        prefix=nets_string, verbose=args.verbose, networks=comb, load_existing_models=args.load_existing_models)
+                                                        prefix=nets_string, verbose=args.verbose, networks=comb, load_existing_models=args.load_existing_models,
+                                                        computed_metrics=df_ens_cal, all_networks=networks)
         
         cal_ens_df, cal_net_df = evaluate_ens(ens_outputs=cal_ens_outputs, tar=test_lab)
         if cal_ens_df.shape[0] > 0:
@@ -112,11 +114,12 @@ def ens_evaluation():
             df_ens_cal = pd.concat([df_ens_cal, cal_ens_df], ignore_index=True)
 
         lin_ens_outputs = linear_pw_ens_train_save(predictors=lin_train_pred, targets=lin_train_lab, test_predictors=test_pred,
-                                                    device=args.device, out_path=exper_output_folder, combining_methods=args.combining_methods,
+                                                    device=args.device, out_path=exper_output_folder, networks=comb,
+                                                    combining_methods=args.combining_methods,
                                                     coupling_methods=args.coupling_methods, prefix=nets_string,
                                                     verbose=args.verbose, val_predictors=val_pred,
                                                     val_targets=val_lab, load_existing_models=args.load_existing_models,
-                                                    output_R_mats=args.compute_pwm)
+                                                    computed_metrics=df_ens_pwc, all_networks=networks)
         
         lin_ens_df = evaluate_ens(ens_outputs=lin_ens_outputs, tar=test_lab)
         if lin_ens_df.shape[0] > 0:
@@ -131,8 +134,8 @@ def ens_evaluation():
             print("Processing combination {} out of {}.".format(ss_i + 1, len(size_combs)))
             process_combination(comb=ss)
         
-        df_ens_pwc.to_csv(os.path.join(exper_output_folder, "ens_pwc_metrics_temp.csv"), index=False)
-        df_ens_cal.to_csv(os.path.join(exper_output_folder, "ens_cal_metrics_temp.csv"), index=False)
+            df_ens_pwc.to_csv(pwc_metrics_file, index=False)
+            df_ens_cal.to_csv(cal_metrics_file, index=False)
        
     if args.ens_comb_file != "" and os.path.exists(args.ens_comb_file):
         print("Loading ensemble combinations from {}".format(args.ens_comb_file))
@@ -146,8 +149,11 @@ def ens_evaluation():
                 continue
             process_combination(comb=comb)
 
-    df_ens_pwc.to_csv(pwc_metrics_file, index=False)
-    df_ens_cal.to_csv(cal_metrics_file, index=False)
+            df_ens_pwc.to_csv(pwc_metrics_file, index=False)
+            df_ens_cal.to_csv(cal_metrics_file, index=False)
+    
+    return 0
     
 if __name__ == "__main__":
-    ens_evaluation()
+    ret = ens_evaluation()
+    sys.exit(ret)

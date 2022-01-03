@@ -11,6 +11,7 @@ from weensembles.WeightedLinearEnsemble import WeightedLinearEnsemble
 from weensembles.predictions_evaluation import ECE_sweep, compute_acc_topk, compute_nll
 from weensembles.CalibrationEnsemble import CalibrationEnsemble
 from weensembles.CombiningMethods import comb_picker
+from weensembles.utils import cuda_mem_try
 
 
 def load_npy_arr(file, device, dtype):
@@ -126,10 +127,10 @@ class CalibratingEnsOutputs:
 
 
 def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_path, combining_methods,
-                             coupling_methods,
+                             coupling_methods, networks,
                              double_accuracy=False, prefix='', verbose=0,
-                             output_R_mats=False, val_predictors=None, val_targets=None,
-                             load_existing_models="no"):
+                             val_predictors=None, val_targets=None,
+                             load_existing_models="no", computed_metrics=None, all_networks=None):
     """
     Trains LinearWeightedEnsemble using all possible combinations of provided combining_methods and coupling_methods.
     Combines outputs given in test_predictors, saves them and returns them in an instance of LinearPWEnsOutputs.
@@ -157,8 +158,10 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
         LinearPWEnsOutputs: Obtained test predictions.
     """
     dtp = torch.float64 if double_accuracy else torch.float32
-    ens_test_results = LinearPWEnsOutputs(combining_methods, coupling_methods, store_R=output_R_mats)
-    
+    ens_test_results = LinearPWEnsOutputs(combining_methods, coupling_methods, store_R=False)
+    if load_existing_models == "lazy":
+        net_mask = [net in networks for net in all_networks]
+   
     for co_m in combining_methods:
         comb_m = comb_picker(co_m=co_m, c=0, k=0)
         if comb_m is None:
@@ -176,13 +179,23 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
         model_loaded = False
         co_m_fun = comb_picker(co_m, c=0, k=0, device=device, dtype=dtp)
         if co_m_fun.req_val_ and (val_predictors is None or val_targets is None):
-            print("Combining method {} requires validation data, but val_predictors or val_targets are None".format(co_m))
-            continue
+            raise ValueError("Combining method {} requires validation data, but val_predictors or val_targets are None".format(co_m))
+            
         model_exists = os.path.exists(model_file)
-        if model_exists and load_existing_models == "lazy":
+
+        metrics_exist = False
+        if load_existing_models == "lazy" and computed_metrics.shape[0] > 0:
+            comb_metrics = computed_metrics[(computed_metrics[all_networks] == net_mask).prod(axis=1) == 1]
+            co_comb_metrics = comb_metrics[comb_metrics["combining_method"] == co_m]
+            if co_comb_metrics.shape[0] == len(coupling_methods):
+                metrics_exist = True
+            else:
+                computed_metrics.drop(co_comb_metrics.index, inplace=True)
+
+        if load_existing_models == "lazy" and metrics_exist:
             continue
         ens = WeightedLinearEnsemble(c=predictors.shape[0], k=predictors.shape[2], device=device, dtp=dtp)
-        if not model_exists or load_existing_models == "no":
+        if load_existing_models == "no" or not model_exists:
             if co_m_fun.req_val_:
                 ens.fit(MP=predictors, tar=targets, verbose=verbose, combining_method=co_m,
                         MP_val=val_predictors, tar_val=val_targets)
@@ -198,29 +211,10 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
                 os.path.join(out_path, prefix + co_m + '_coefs_{}.csv'.format("double" if double_accuracy else "float")))
 
         for cp_mi, cp_m in enumerate(coupling_methods):
-            fin = False
-            tries = 0
-            cur_b = test_predictors.shape[1]
-            while not fin and tries < 20 and cur_b > 0:
-                if tries > 0:
-                    torch.cuda.synchronize()
-                    torch.cuda.empty_cache()
-                    print('Trying again, try {}, batch size {}'.format(tries, cur_b))
-                try:
-                    ens_test_out_method = ens.predict_proba(test_predictors, cp_m,
-                                                            batch_size=cur_b)
-                    fin = True
-                except RuntimeError as rerr:
-                    if 'memory' not in str(rerr):
-                        raise rerr
-                    print("OOM Exception")
-                    del rerr
-                    cur_b = int(0.5 * cur_b)
-                    tries += 1
-
-            if not fin:
-                print('Unsuccessful')
-                return -1
+            ens_test_out_method = cuda_mem_try(
+                fun=lambda bsz: ens.predict_proba(MP=test_predictors, coupling_method=cp_m, batch_size=bsz, verbose=verbose),
+                start_bsz=test_predictors.shape[1],
+                verbose=verbose)
 
             ens_test_results.store(co_m, cp_m, ens_test_out_method, R_mat=None)
             np.save(os.path.join(out_path,
@@ -233,7 +227,7 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
 
 def calibrating_ens_train_save(predictors, targets, test_predictors, device, out_path, calibrating_methods,
                                networks, double_accuracy=False, prefix='', verbose=0,
-                               load_existing_models="no"):
+                               load_existing_models="no", computed_metrics=None, all_networks=None):
     """
 
     :param predictors: Penultimate layer outputs or logits to train ensemble on.
@@ -250,6 +244,9 @@ def calibrating_ens_train_save(predictors, targets, test_predictors, device, out
     dtp = torch.float64 if double_accuracy else torch.float32
     ens_test_results = CalibratingEnsOutputs(calibrating_methods=[cal_m.__name__ for cal_m in calibrating_methods],
                                              networks=networks)
+    if load_existing_models == "lazy":
+        net_mask = [net in networks for net in all_networks]
+    
     for cal_mi, cal_m in enumerate(calibrating_methods):
         if verbose > 0:
             print("Processing calibrating method {}".format(cal_m.__name__))
@@ -257,11 +254,19 @@ def calibrating_ens_train_save(predictors, targets, test_predictors, device, out
                               prefix + cal_m.__name__ + '_model_{}'.format("double" if double_accuracy else "float"))
         model_loaded = False
         model_exists = os.path.exists(model_file)
-        if model_exists and load_existing_models == "lazy":
+
+        metrics_exist = False
+        if load_existing_models == "lazy" and computed_metrics.shape[0] > 0:
+            comb_metrics = computed_metrics[(computed_metrics[all_networks] == net_mask).prod(axis=1) == 1]
+            cal_comb_metrics = comb_metrics[comb_metrics["calibrating_method"] == cal_m]
+            if cal_comb_metrics.shape[0] > 0:
+                metrics_exist = True
+                
+        if load_existing_models == "lazy" and metrics_exist:
             continue
         
         ens = CalibrationEnsemble(c=predictors.shape[0], k=predictors.shape[2], device=device, dtp=dtp)
-        if not model_exists or load_existing_models == "no":
+        if load_existing_models == "no" or not model_exists:
             ens.fit(MP=predictors, tar=targets, calibration_method=cal_m, verbose=verbose)
         else:
             ens.load(model_file)
