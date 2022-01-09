@@ -214,7 +214,8 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
             ens_test_out_method = cuda_mem_try(
                 fun=lambda bsz: ens.predict_proba(MP=test_predictors, coupling_method=cp_m, batch_size=bsz, verbose=verbose),
                 start_bsz=test_predictors.shape[1],
-                verbose=verbose)
+                verbose=verbose,
+                device=device)
 
             ens_test_results.store(co_m, cp_m, ens_test_out_method, R_mat=None)
             np.save(os.path.join(out_path,

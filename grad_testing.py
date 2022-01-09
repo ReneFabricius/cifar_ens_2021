@@ -64,11 +64,11 @@ def test_grad():
             train_pred = cuda_mem_try(
                     fun=lambda bsz: wle.predict_proba_topl_fast(MP=net_outputs["val_outputs"], l=k, coupling_method=cp_m_test, coefs=coefs,
                                                                 verbose=max(args.verbose - 2, 0), batch_size=bsz),
-                    start_bsz=net_outputs["val_outputs"].shape[1], verbose=args.verbose)
+                    start_bsz=net_outputs["val_outputs"].shape[1], verbose=args.verbose, device=args.device)
             test_pred = cuda_mem_try(
                     fun=lambda bsz: wle.predict_proba_topl_fast(MP=net_outputs["test_outputs"], l=k, coupling_method=cp_m_test, coefs=coefs,
                                                                 verbose=max(args.verbose - 2, 0), batch_size=bsz),
-                    start_bsz=net_outputs["test_outputs"].shape[1], verbose=args.verbose)
+                    start_bsz=net_outputs["test_outputs"].shape[1], verbose=args.verbose, device=args.device)
             
             train_acc = compute_acc_topk(pred=train_pred, tar=net_outputs["val_labels"], k=1) 
             train_nll = compute_nll(pred=train_pred, tar=net_outputs["val_labels"])
