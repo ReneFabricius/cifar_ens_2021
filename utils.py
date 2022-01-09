@@ -259,7 +259,7 @@ def calibrating_ens_train_save(predictors, targets, test_predictors, device, out
         metrics_exist = False
         if load_existing_models == "lazy" and computed_metrics.shape[0] > 0:
             comb_metrics = computed_metrics[(computed_metrics[all_networks] == net_mask).prod(axis=1) == 1]
-            cal_comb_metrics = comb_metrics[comb_metrics["calibrating_method"] == cal_m]
+            cal_comb_metrics = comb_metrics[comb_metrics["calibrating_method"] == cal_m.__name__]
             if cal_comb_metrics.shape[0] > 0:
                 metrics_exist = True
                 
