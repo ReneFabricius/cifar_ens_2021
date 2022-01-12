@@ -423,6 +423,7 @@ def pairwise_accuracies_mat(preds, labs):
     
     return PWA
             
+            
 def average_variance(inp, var_dim=0):
     """Computes variance over the specified dimension of the inpuit tensor and then averages it over all remaining dimensions.
 
@@ -431,7 +432,8 @@ def average_variance(inp, var_dim=0):
         var_dim (int, optional): Dimension over which to compute variance. Defaults to 0.
     """
     vars = torch.var(inp, dim=var_dim, unbiased=False)
-    return torch.mean(vars)
+    return torch.mean(vars).item()
+            
             
 def compute_pairwise_accuracies(preds, labs):
     """
