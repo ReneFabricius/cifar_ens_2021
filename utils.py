@@ -395,6 +395,44 @@ def average_Rs(outputs_path, replications, folds=None, device="cuda"):
         combining_methods_pd.to_csv(os.path.join(outputs_path, "R_mat_co_m_names.csv"), index=False, header=False)
 
 
+def pairwise_accuracies_mat(preds, labs):
+    """Computes matrices of pairwise accuracies for provided predictions according to provided labels
+
+    Args:
+        preds (torch.tensor): Tensor of predictions, shape: predictors x samples x classes
+        labs (torch.tensor): Correct labels. Tensor of shape samples.
+    """
+    dev = preds.device
+    dtp = preds.dtype
+    c, n, k = preds.shape
+    PWA = torch.zeros(c, k, k, device=dev, dtype=dtp)
+    for c1 in range(k):
+        for c2 in range(c1 + 1, k):
+            mask = (labs == c1) + (labs == c2)
+            cur_n = torch.sum(mask)
+            cur_preds = preds[:, mask][:, :, [c1, c2]]
+            cur_labs = labs[mask]
+            c1m = cur_labs == c1
+            c2m = cur_labs == c2
+            cur_labs[c1m] = 0
+            cur_labs[c2m] = 1
+            _, cur_inds = torch.topk(cur_preds, k=1, dim=-1)
+            cur_accs = torch.sum(cur_inds.squeeze() == cur_labs, dim=-1) / cur_n
+            PWA[:, c1, c2] = cur_accs
+            PWA[:, c2, c1] = cur_accs
+    
+    return PWA
+            
+def average_variance(inp, var_dim=0):
+    """Computes variance over the specified dimension of the inpuit tensor and then averages it over all remaining dimensions.
+
+    Args:
+        inp (torch.tensor): Input tensor
+        var_dim (int, optional): Dimension over which to compute variance. Defaults to 0.
+    """
+    vars = torch.var(inp, dim=var_dim, unbiased=False)
+    return torch.mean(vars)
+            
 def compute_pairwise_accuracies(preds, labs):
     """
     Computes pairwise accuracies of the provided predictions according to provided labels.

@@ -9,7 +9,7 @@ import torch
 
 from weensembles.CalibrationMethod import TemperatureScaling
 from weensembles.predictions_evaluation import compute_error_inconsistency
-from utils import load_networks_outputs, evaluate_ens, evaluate_networks, linear_pw_ens_train_save, calibrating_ens_train_save
+from utils import load_networks_outputs, evaluate_ens, evaluate_networks, linear_pw_ens_train_save, calibrating_ens_train_save, pairwise_accuracies_mat, average_variance
 
 
 def ens_evaluation():
@@ -42,6 +42,8 @@ def ens_evaluation():
                                         device=args.device, dtype=dtp)
     df_net = evaluate_networks(net_outputs)
     df_net.to_csv(os.path.join(exper_output_folder, "net_metrics.csv"), index=False)
+    
+    net_pwa = pairwise_accuracies_mat(preds=net_outputs["test_outputs"], labs=net_outputs["test_labels"])
     
     networks = net_outputs["networks"]
     if os.path.exists(cal_metrics_file) and args.load_existing_models == "lazy":
@@ -97,6 +99,7 @@ def ens_evaluation():
         test_lab = net_outputs["test_labels"]
         
         err_inc, all_cor = compute_error_inconsistency(preds=test_pred, tar=test_lab)
+        mean_pwa_var = average_variance(inp=net_pwa[mask])
         
         _, lin_train_idx = train_test_split(np.arange(len(train_lab)), shuffle=True, stratify=train_lab.cpu(), train_size=lin_ens_train_size)
         lin_train_pred = train_pred[:, lin_train_idx]
@@ -110,7 +113,7 @@ def ens_evaluation():
         cal_ens_df, cal_net_df = evaluate_ens(ens_outputs=cal_ens_outputs, tar=test_lab)
         if cal_ens_df.shape[0] > 0:
             cal_ens_df[networks] = mask
-            cal_ens_df[["combination_size", "combination_id", "err_incons", "all_cor"]] = [comb_size, comb_id, err_inc, all_cor]
+            cal_ens_df[["combination_size", "combination_id", "err_incons", "all_cor", "mean_pwa_var"]] = [comb_size, comb_id, err_inc, all_cor, mean_pwa_var]
             df_ens_cal = pd.concat([df_ens_cal, cal_ens_df], ignore_index=True)
 
         lin_ens_outputs = linear_pw_ens_train_save(predictors=lin_train_pred, targets=lin_train_lab, test_predictors=test_pred,
@@ -124,7 +127,7 @@ def ens_evaluation():
         lin_ens_df = evaluate_ens(ens_outputs=lin_ens_outputs, tar=test_lab)
         if lin_ens_df.shape[0] > 0:
             lin_ens_df[networks] = mask
-            lin_ens_df[["combination_size", "combination_id", "err_incons", "all_cor"]] = [comb_size, comb_id, err_inc, all_cor]
+            lin_ens_df[["combination_size", "combination_id", "err_incons", "all_cor", "mean_pwa_var"]] = [comb_size, comb_id, err_inc, all_cor, mean_pwa_var]
             df_ens_pwc = pd.concat([df_ens_pwc, lin_ens_df], ignore_index=True)
         
     for sss in [int(ens_sz) for ens_sz in args.ens_sizes]:
