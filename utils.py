@@ -143,6 +143,7 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
         out_path (string): Folder to save the outputs to.
         combining_methods (list): List of combining methods to use.
         coupling_methods (list): List of coupling methods to use.
+        networks (list): List of network names.
         double_accuracy (bool, optional): Whether to use double accuracy. Defaults to False.
         prefix (str, optional): Prefix to prepend to file names with outputs. Defaults to ''.
         verbose (int, optional): Verbosity level. Defaults to 0.

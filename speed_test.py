@@ -8,7 +8,7 @@ from utils import print_memory_statistics
 def test_transfer():
     print("Performing transfer test")
     size = (100, 100)
-    number = 100
+    number = 10000
     dev = torch.device("cuda")
     dtp = torch.float64
 
@@ -29,7 +29,7 @@ def test_transfer():
     for i in range(number):
         t = torch.rand(size).to(dtype=dtp).cuda()
     end_cuda = timer()
-    print("Method to() finished in {} s".format(end_cuda - start_cuda))
+    print("Method cuda() finished in {} s".format(end_cuda - start_cuda))
 
     print("Testing direct method")
     start_dir = timer()
