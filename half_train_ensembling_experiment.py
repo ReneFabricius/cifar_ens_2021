@@ -23,6 +23,8 @@ def ens_exp():
     parser.add_argument('-cifar', default=100, type=int, help='cifar type (10 or 100)')
     parser.add_argument('-device', type=str, default='cpu', help='device on which to execute the script')
     parser.add_argument('-coupling_methods', nargs='+', default=["m2"], help='Coupling methods to use')
+    parser.add_argument('-load_existing_models', type=str, choices=["no", "recalculate"], default="no", help="Loading of present models. If no - all computations are performed again, \
+                        if recalculate - existing models are loaded, but metrics are calculated again.")
     parser.add_argument('-combining_methods', nargs='+', default=["average"], help="Combining methods to use")
     args = parser.parse_args()
 
@@ -100,7 +102,8 @@ def ens_exp():
                                                             out_path=par["out_fold"],
                                                             combining_methods=args.combining_methods,
                                                             coupling_methods=args.coupling_methods, prefix="fold_{}_".format(fold_i),
-                                                            verbose=False)
+                                                            verbose=args.verbose,
+                                                            load_existing_models=args.load_existing_models)
 
                 ens_df_fold = evaluate_ens(ens_outputs=fold_ens_results, tar=test_labels)
                 ens_df_fold["repli"] = repli

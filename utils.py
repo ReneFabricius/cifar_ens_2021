@@ -143,7 +143,7 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
         out_path (string): Folder to save the outputs to.
         combining_methods (list): List of combining methods to use.
         coupling_methods (list): List of coupling methods to use.
-        networks (list): List of network names.
+        networks (list): List of network names present in the current ensemble.
         double_accuracy (bool, optional): Whether to use double accuracy. Defaults to False.
         prefix (str, optional): Prefix to prepend to file names with outputs. Defaults to ''.
         verbose (int, optional): Verbosity level. Defaults to 0.
@@ -151,7 +151,12 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
         save_R_mats (bool, optional): Whether to save resulting R matrices. Defaults to False.
         val_predictors (torch tensor, optional): Validation predictors. Tensor of shape c×n_v×k. Required if sweep_C is True. Defaults to None.
         val_targets (torch tensor, optional): Validation targets. Required if sweep_C is True. Defaults to None.
-
+        load_existing_models (string): Existing models loading strategy. Possible values are no, recalculate and lazy.
+            If no is chosen, no loading is performed and all models are trained.
+            If recalculate is chosen, models are loaded if corresponding model file exists and metrics are recalculated.
+            If lazy is chosem, models for which both model file and metrics are present are skipped. Defaults to no.
+        computed_metrics (pandas.Dataframe): Already computed metrics. Required if load_existing_models is lazy.
+        all_networks (list): List of all networks names in the experiment. Required if load_existing_models is lazy.
     Raises:
         rerr: [description]
 
@@ -231,17 +236,28 @@ def calibrating_ens_train_save(predictors, targets, test_predictors, device, out
                                networks, double_accuracy=False, prefix='', verbose=0,
                                load_existing_models="no", computed_metrics=None, all_networks=None):
     """
+    Trains CalibrationdEnsemble using each provided calibrating_method.
+    Combines outputs given in test_predictors, saves them and returns them in an instance of CalibratingEnsOutput.
 
-    :param predictors: Penultimate layer outputs or logits to train ensemble on.
-    :param targets: Correct labels for predictors.
-    :param test_predictors: Penultimate layer outputs or logits to test ensemble on.
-    :param device: Torch device to use.
-    :param out_path: Path to folder for saving outputs.
-    :param calibrating_methods: Calibrating methods to use.
-    :param double_accuracy: Whether to use double accuracy.
-    :param prefix: Prefix for file names of saved outputs.
-    :param verbose: Level of verbosity.
-    :return: CalibratingEnsOutput instance with ensemble and calibrated networks outputs.
+    Args:
+        predictors (torch tensor): Training predictors. Tensor of shape c×n×k.
+        targets (torch tensor): Training targets.
+        test_predictors (torch tensor): Testing predictors. Tensor of shape c×n_t×k.
+        device (string): Torch device to use.
+        out_path (string): Path to folder for saving outputs.
+        calibrating_methods (list): Calibrating methods to use.
+        double_accuracy (bool): Whether to use double accuracy. Defaults to False.
+        prefix (string): Prefix for file names of saved outputs. Defaults to ''.
+        verbose (int): Level of verbosity. Defaults to 0.
+        load_existing_models (string): Existing models loading strategy. Possible values are no, recalculate and lazy.
+            If no is chosen, no loading is performed and all models are trained.
+            If recalculate is chosen, models are loaded if corresponding model file exists and metrics are recalculated.
+            If lazy is chosem, models for which both model file and metrics are present are skipped. Defaults to no.
+        computed_metrics (pandas.Dataframe): Already computed metrics. Required if load_existing_models is lazy. Defaults to None.
+        all_networks (list): List of all networks names in the experiment. Required if load_existing_models is lazy. Defaults to None.
+
+    Returns:
+        CalibratingEnsOutput: instance with ensemble and calibrated networks outputs.
     """
     dtp = torch.float64 if double_accuracy else torch.float32
     ens_test_results = CalibratingEnsOutputs(calibrating_methods=[cal_m.__name__ for cal_m in calibrating_methods],
