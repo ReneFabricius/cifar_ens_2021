@@ -20,6 +20,9 @@ def ens_train_exp():
     parser.add_argument('-min_size', type=int, default=80, help="Minimum size of train set")
     parser.add_argument('-max_size', type=int, default=5000, help="Maximum size of train set")
     parser.add_argument('-n_splits', type=int, default=10, help="Number of splits for each size")
+    parser.add_argument('-load_existing_models', type=str, choices=["no", "recalculate"], default="no", help="Loading of present models. If no - all computations are performed again, \
+                        if recalculate - existing models are loaded, but metrics are calculated again.")
+    parser.add_argument('-verbose', type=int, default=0, help="Verbosity level.")
     args = parser.parse_args()
 
     exper_outputs_path = os.path.join(args.folder, EXP_OUTPUTS_FOLDER)
@@ -65,7 +68,8 @@ def ens_train_exp():
                                                         combining_methods=args.combining_methods,
                                                         coupling_methods=args.coupling_methods,
                                                         networks=net_outputs["networks"],
-                                                        prefix="size_{}_repl_{}_".format(real_t_size, fold_i))
+                                                        prefix="size_{}_repl_{}_".format(real_t_size, fold_i),
+                                                        load_existing_models=args.load_existing_models)
 
             df_ens_ts = evaluate_ens(ens_outputs=test_ens_results, tar=net_outputs["test_labels"])
             df_ens_ts["train_size"] = real_t_size

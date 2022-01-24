@@ -26,6 +26,7 @@ def ens_exp():
     parser.add_argument('-load_existing_models', type=str, choices=["no", "recalculate"], default="no", help="Loading of present models. If no - all computations are performed again, \
                         if recalculate - existing models are loaded, but metrics are calculated again.")
     parser.add_argument('-combining_methods', nargs='+', default=["average"], help="Combining methods to use")
+    parser.add_argument('-verbose', type=int, default=0, help="Verbosity level.")
     args = parser.parse_args()
 
     torch_dev = torch.device(args.device)
