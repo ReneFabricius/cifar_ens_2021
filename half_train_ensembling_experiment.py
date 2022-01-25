@@ -96,6 +96,7 @@ def ens_exp():
                 fold_lab = par["train_labs"][fold_idxs].to(device=torch_dev)
 
                 fold_ens_results = linear_pw_ens_train_save(predictors=fold_pred, targets=fold_lab,
+                                                            val_predictors=fold_pred, val_targets=fold_lab,
                                                             test_predictors=test_outputs, device=torch_dev,
                                                             out_path=par["out_fold"],
                                                             combining_methods=args.combining_methods,
