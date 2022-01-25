@@ -18,7 +18,7 @@ VAL_TRAIN = 'val_training'
 def ens_exp():
     parser = argparse.ArgumentParser()
     parser.add_argument('-folder', type=str, required=True, help='experiment root folder')
-    parser.add_argument('-fold_size', type=int, default=500, required=True, help='LDA training set size')
+    parser.add_argument('-fold_size', type=int, default=500, required=True, help='Combiner training set size')
     parser.add_argument('-repl', type=int, default=1, help='number of replications')
     parser.add_argument('-cifar', default=100, type=int, help='cifar type (10 or 100)')
     parser.add_argument('-device', type=str, default='cpu', help='device on which to execute the script')
@@ -49,15 +49,12 @@ def ens_exp():
         vt_out_path = os.path.join(comb_out_path, VAL_TRAIN)
         nn_outputs_path = os.path.join(repli_path, 'outputs')
 
-        if os.path.exists(comb_out_path):
-            shutil.rmtree(comb_out_path)
-        os.mkdir(comb_out_path)
-        if os.path.exists(tt_out_path):
-            shutil.rmtree(tt_out_path)
-        os.mkdir(tt_out_path)
-        if os.path.exists(vt_out_path):
-            shutil.rmtree(vt_out_path)
-        os.mkdir(vt_out_path)
+        if not os.path.exists(comb_out_path):
+            os.mkdir(comb_out_path)
+        if not os.path.exists(tt_out_path):
+            os.mkdir(tt_out_path)
+        if not os.path.exists(vt_out_path):
+            os.mkdir(vt_out_path)
 
         print("Loading networks outputs")
         net_outputs = load_networks_outputs(nn_outputs_path, comb_out_path, load_device)
@@ -114,8 +111,9 @@ def ens_exp():
                 
                 del fold_ens_results
 
-        df_ens.to_csv(os.path.join(args.folder, 'ensemble_metrics.csv'), index=False)
+            df_ens.to_csv(os.path.join(args.folder, 'ensemble_metrics.csv'), index=False)
 
 
 if __name__ == '__main__':
     ens_exp()
+    
