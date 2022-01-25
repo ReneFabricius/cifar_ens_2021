@@ -101,6 +101,7 @@ def ens_exp():
                                                             combining_methods=args.combining_methods,
                                                             coupling_methods=args.coupling_methods, prefix="fold_{}_".format(fold_i),
                                                             verbose=args.verbose,
+                                                            networks=net_outputs["networks"],
                                                             load_existing_models=args.load_existing_models)
 
                 ens_df_fold = evaluate_ens(ens_outputs=fold_ens_results, tar=test_labels)
