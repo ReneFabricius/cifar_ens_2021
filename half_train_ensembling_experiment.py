@@ -7,6 +7,7 @@ import shutil
 import pandas as pd
 import torch
 from sklearn.model_selection import StratifiedKFold
+from itertools import combinations
 
 from utils import evaluate_ens, evaluate_networks, linear_pw_ens_train_save, load_networks_outputs, print_memory_statistics
 
@@ -34,10 +35,8 @@ def ens_exp():
     load_device = args.device if args.cifar == 10 else "cpu"
     torch_dev_load = torch.device(load_device)
 
-    df_ens = pd.DataFrame(columns=('repli', 'fold',  'train_set', 'combining_method', 'coupling_method',
-                                   'accuracy', 'nll', 'ece'))
-
-    df_net = pd.DataFrame(columns=("repli", "network", "accuracy", "nll", "ece"))
+    df_ens = pd.DataFrame()
+    df_net = pd.DataFrame()
 
     print_memory_statistics()
 
@@ -94,24 +93,34 @@ def ens_exp():
                 fold_idxs = torch.from_numpy(fold_idxs).to(device=torch_dev_load, dtype=torch.long)
                 fold_pred = par["train_preds"][:, fold_idxs, :].to(device=torch_dev, dtype=torch_dtp)
                 fold_lab = par["train_labs"][fold_idxs].to(device=torch_dev)
-
-                fold_ens_results = linear_pw_ens_train_save(predictors=fold_pred, targets=fold_lab,
-                                                            val_predictors=fold_pred, val_targets=fold_lab,
-                                                            test_predictors=test_outputs, device=torch_dev,
-                                                            out_path=par["out_fold"],
-                                                            combining_methods=args.combining_methods,
-                                                            coupling_methods=args.coupling_methods, prefix="fold_{}_".format(fold_i),
-                                                            verbose=args.verbose,
-                                                            networks=net_outputs["networks"],
-                                                            load_existing_models=args.load_existing_models)
-
-                ens_df_fold = evaluate_ens(ens_outputs=fold_ens_results, tar=test_labels)
-                ens_df_fold["repli"] = repli
-                ens_df_fold["fold"] = fold_i
-                ens_df_fold["train_set"] = par["train_set"]
-                df_ens = pd.concat([df_ens, ens_df_fold], ignore_index=True)
                 
-                del fold_ens_results
+                networks = sorted(net_outputs["networks"])
+                comb_id = 0
+                for sss in range(2, len(networks) + 1):
+                    print("Processing combinations of {} networks".format(sss))
+                    for comb in combinations(networks, sss):
+                        mask = [net in comb for net in networks]
+                        nets_string = "fold_{}_".format(fold_i) + '+'.join(sorted(comb)) + "_"
+                        comb_fold_pred = fold_pred[mask]
+                        comb_test_outputs = test_outputs[mask]
+
+                        fold_ens_results = linear_pw_ens_train_save(predictors=comb_fold_pred, targets=fold_lab,
+                                                                    val_predictors=comb_fold_pred, val_targets=fold_lab,
+                                                                    test_predictors=comb_test_outputs, device=torch_dev,
+                                                                    out_path=par["out_fold"],
+                                                                    combining_methods=args.combining_methods,
+                                                                    coupling_methods=args.coupling_methods, prefix=nets_string,
+                                                                    verbose=args.verbose,
+                                                                    networks=comb,
+                                                                    load_existing_models=args.load_existing_models)
+
+                        ens_df_fold = evaluate_ens(ens_outputs=fold_ens_results, tar=test_labels)
+                        ens_df_fold[networks] = mask
+                        ens_df_fold[["repli", "fold", "train_set", "sombination_size", "combination_id"]] = [repli, fold_i, par["train_set"], sss, comb_id]
+                        df_ens = pd.concat([df_ens, ens_df_fold], ignore_index=True)
+                        comb_id += 1                        
+                        
+                        del fold_ens_results
 
             df_ens.to_csv(os.path.join(args.folder, 'ensemble_metrics.csv'), index=False)
 
