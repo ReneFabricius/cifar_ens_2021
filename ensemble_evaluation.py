@@ -47,7 +47,7 @@ def ens_evaluation():
         if true_val_size > CIF10_VAL_SIZE:
             print("Warning: subsetting validation set to the size of {}".format(CIF10_VAL_SIZE))
             _, val_ss_inds = train_test_split(np.arange(true_val_size), test_size=CIF10_VAL_SIZE,
-                                              random_state=42, stratify=net_outputs["val_labels"])
+                                              random_state=42, stratify=net_outputs["val_labels"].cpu())
             val_ss_inds = torch.from_numpy(val_ss_inds).to(device=args.device)
             net_outputs["val_labels"] = net_outputs["val_labels"][val_ss_inds]
             net_outputs["val_outputs"] = net_outputs["val_outputs"][:, val_ss_inds]
