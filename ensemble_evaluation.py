@@ -40,6 +40,18 @@ def ens_evaluation():
     print("Loading networks outputs")
     net_outputs = load_networks_outputs(nn_outputs_path=os.path.join(args.folder, "outputs"), experiment_out_path=exper_output_folder,
                                         device=args.device, dtype=dtp)
+
+    if args.cifar == 10:
+        CIF10_VAL_SIZE = 500
+        true_val_size = len(net_outputs["val_labels"])
+        if true_val_size > CIF10_VAL_SIZE:
+            print("Warning: subsetting validation set to the size of {}".format(CIF10_VAL_SIZE))
+            _, val_ss_inds = train_test_split(np.arange(true_val_size), test_size=CIF10_VAL_SIZE,
+                                              shuffle=False, stratify=net_outputs["val_labels"])
+            val_ss_inds = torch.from_numpy(val_ss_inds).to(device=args.device)
+            net_outputs["val_labels"] = net_outputs["val_labels"][val_ss_inds]
+            net_outputs["val_outputs"] = net_outputs["val_outputs"][:, val_ss_inds]
+    
     df_net = evaluate_networks(net_outputs)
     df_net.to_csv(os.path.join(exper_output_folder, "net_metrics.csv"), index=False)
     
