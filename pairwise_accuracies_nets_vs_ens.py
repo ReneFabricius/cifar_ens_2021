@@ -2,7 +2,6 @@ import torch
 import argparse
 import pandas as pd
 import os
-import re
 from utils import load_networks_outputs, compute_pairwise_accuracies, load_npy_arr, compute_pairwise_calibration, get_irrelevant_predictions
 
 
