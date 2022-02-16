@@ -23,9 +23,11 @@ def ens_evaluation():
     parser.add_argument('-load_existing_models', type=str, choices=["no", "recalculate", "lazy"], default="no", help="Loading of present models. If no - all computations are performed again, \
                         if recalculate - existing models are loaded, but metrics are calculated again, if lazy - existing models are skipped.")
     parser.add_argument('-compute_pairwise_metrics', dest="compute_pwm", action="store_true", help="Whether to compute pairwise accuracies and calibration")
-    parser.add_argument('-combining_methods', nargs='+', default=["average"], help="COmbining methods to use")
+    parser.add_argument('-combining_methods', nargs='+', default=["average"], help="Combining methods to use")
     parser.add_argument('-coupling_methods', nargs='+', default=['m2'], help="Coupling methods to use")
+    parser.add_argument('-save_C', dest='save_sweep_C', action='store_true', help="Whether to save regularization coefficients C for logreg methods with sweep_C. Defaults to False.")
     parser.set_defaults(compute_pwm=False)
+    parser.set_defaults(save_sweep_C=False)
     args = parser.parse_args()
     
     lin_ens_train_size = 50 * args.cifar
@@ -134,7 +136,8 @@ def ens_evaluation():
                                                     coupling_methods=args.coupling_methods, prefix=nets_string,
                                                     verbose=args.verbose, val_predictors=val_pred,
                                                     val_targets=val_lab, load_existing_models=args.load_existing_models,
-                                                    computed_metrics=df_ens_pwc, all_networks=networks)
+                                                    computed_metrics=df_ens_pwc, all_networks=networks,
+                                                    save_sweep_C=args.save_sweep_C)
         
         lin_ens_df = evaluate_ens(ens_outputs=lin_ens_outputs, tar=test_lab)
         if lin_ens_df.shape[0] > 0:

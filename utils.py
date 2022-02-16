@@ -130,7 +130,8 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
                              coupling_methods, networks,
                              double_accuracy=False, prefix='', verbose=0,
                              val_predictors=None, val_targets=None,
-                             load_existing_models="no", computed_metrics=None, all_networks=None):
+                             load_existing_models="no", computed_metrics=None, all_networks=None,
+                             save_sweep_C=False):
     """
     Trains LinearWeightedEnsemble using all possible combinations of provided combining_methods and coupling_methods.
     Combines outputs given in test_predictors, saves them and returns them in an instance of LinearPWEnsOutputs.
@@ -157,6 +158,7 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
             If lazy is chosem, models for which both model file and metrics are present are skipped. Defaults to no.
         computed_metrics (pandas.Dataframe): Already computed metrics. Required if load_existing_models is lazy.
         all_networks (list): List of all networks names in the experiment. Required if load_existing_models is lazy.
+        save_sweep_C (bool, optional): Whether to save C coefficients of logreg combining methods using sweep_C. Defaults to False.
     Raises:
         rerr: [description]
 
@@ -186,6 +188,8 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
         co_m_fun = comb_picker(co_m, c=0, k=0, device=device, dtype=dtp)
         if co_m_fun.req_val_ and (val_predictors is None or val_targets is None):
             raise ValueError("Combining method {} requires validation data, but val_predictors or val_targets are None".format(co_m))
+        
+        save_C = save_sweep_C and hasattr(co_m_fun, "sweep_C_")
             
         model_exists = os.path.exists(model_file)
 
@@ -200,13 +204,14 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
 
         if load_existing_models == "lazy" and metrics_exist:
             continue
+        
         ens = WeightedLinearEnsemble(c=predictors.shape[0], k=predictors.shape[2], device=device, dtp=dtp)
         if load_existing_models == "no" or not model_exists:
             if co_m_fun.req_val_:
                 ens.fit(MP=predictors, tar=targets, verbose=verbose, combining_method=co_m,
-                        MP_val=val_predictors, tar_val=val_targets)
+                        MP_val=val_predictors, tar_val=val_targets, save_C=save_C)
             else:
-                ens.fit(MP=predictors, tar=targets, verbose=verbose, combining_method=co_m)
+                ens.fit(MP=predictors, tar=targets, verbose=verbose, combining_method=co_m, save_C=save_C)
         else:
             ens.load(model_file)
             model_loaded = True
@@ -215,6 +220,10 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
             ens.save(model_file)
             ens.save_coefs_csv(
                 os.path.join(out_path, prefix + co_m + '_coefs_{}.csv'.format("double" if double_accuracy else "float")))
+            if save_C:
+                ens.save_C_coefs(
+                    os.path.join(out_path, prefix + co_m + '_coefs_C_{}.csv'.format("double" if double_accuracy else "float"))
+                )
 
         for cp_mi, cp_m in enumerate(coupling_methods):
             ens_test_out_method = cuda_mem_try(
