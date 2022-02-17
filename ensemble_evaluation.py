@@ -12,27 +12,31 @@ from weensembles.predictions_evaluation import compute_error_inconsistency
 from utils import load_networks_outputs, evaluate_ens, evaluate_networks, linear_pw_ens_train_save, calibrating_ens_train_save, pairwise_accuracies_mat, average_variance
 
 
-def ens_evaluation():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-folder', type=str, help="Replication folder")
-    parser.add_argument('-ens_sizes', nargs="+", default=[], help="Ensemble sizes to test")
-    parser.add_argument('-ens_comb_file', type=str, default="", help="Path to file with listing of networks combinations to test. Can be used along with -ens_sizes.")
-    parser.add_argument('-device', type=str, default="cpu", help="Device to use")
-    parser.add_argument('-cifar', type=int, help="CIFAR type (10 or 100)")
-    parser.add_argument('-verbose', default=0, type=int, help="Level of verbosity")
-    parser.add_argument('-load_existing_models', type=str, choices=["no", "recalculate", "lazy"], default="no", help="Loading of present models. If no - all computations are performed again, \
-                        if recalculate - existing models are loaded, but metrics are calculated again, if lazy - existing models are skipped.")
-    parser.add_argument('-compute_pairwise_metrics', dest="compute_pwm", action="store_true", help="Whether to compute pairwise accuracies and calibration")
-    parser.add_argument('-combining_methods', nargs='+', default=["average"], help="Combining methods to use")
-    parser.add_argument('-coupling_methods', nargs='+', default=['m2'], help="Coupling methods to use")
-    parser.add_argument('-save_C', dest='save_sweep_C', action='store_true', help="Whether to save regularization coefficients C for logreg methods with sweep_C. Defaults to False.")
-    parser.set_defaults(compute_pwm=False)
-    parser.set_defaults(save_sweep_C=False)
-    args = parser.parse_args()
+def ens_evaluation(args_dict=None):
+    if args_dict is None:
+        parser = argparse.ArgumentParser()
+        parser.add_argument('-folder', type=str, help="Replication folder")
+        parser.add_argument('-ens_sizes', nargs="+", default=[], help="Ensemble sizes to test")
+        parser.add_argument('-ens_comb_file', type=str, default="", help="Path to file with listing of networks combinations to test. Can be used along with -ens_sizes.")
+        parser.add_argument('-device', type=str, default="cpu", help="Device to use")
+        parser.add_argument('-cifar', type=int, help="CIFAR type (10 or 100)")
+        parser.add_argument('-verbose', default=0, type=int, help="Level of verbosity")
+        parser.add_argument('-load_existing_models', type=str, choices=["no", "recalculate", "lazy"], default="no", help="Loading of present models. If no - all computations are performed again, \
+                            if recalculate - existing models are loaded, but metrics are calculated again, if lazy - existing models are skipped.")
+        parser.add_argument('-compute_pairwise_metrics', dest="compute_pwm", action="store_true", help="Whether to compute pairwise accuracies and calibration")
+        parser.add_argument('-combining_methods', nargs='+', default=["average"], help="Combining methods to use")
+        parser.add_argument('-coupling_methods', nargs='+', default=['m2'], help="Coupling methods to use")
+        parser.add_argument('-save_C', dest='save_sweep_C', action='store_true', help="Whether to save regularization coefficients C for logreg methods with sweep_C. Defaults to False.")
+        parser.add_argument('-output_folder', type=str, default="exp_ensemble_evaluation", help="Folder name to save the outputs to.")
+        parser.set_defaults(compute_pwm=False)
+        parser.set_defaults(save_sweep_C=False)
+        args = parser.parse_args()
+    else:
+        args = args_dict
     
     lin_ens_train_size = 50 * args.cifar
     dtp = torch.float32
-    exper_output_folder = os.path.join(args.folder, "exp_ensemble_evaluation")
+    exper_output_folder = os.path.join(args.folder, args.output_folder)
     if not os.path.exists(exper_output_folder):
         os.mkdir(exper_output_folder)
         
@@ -50,7 +54,6 @@ def ens_evaluation():
             print("Warning: subsetting validation set to the size of {}".format(CIF10_VAL_SIZE))
             _, val_ss_inds = train_test_split(np.arange(true_val_size), test_size=CIF10_VAL_SIZE,
                                               random_state=42, stratify=net_outputs["val_labels"].cpu())
-            val_ss_inds = torch.from_numpy(val_ss_inds).to(device=args.device)
             net_outputs["val_labels"] = net_outputs["val_labels"][val_ss_inds]
             net_outputs["val_outputs"] = net_outputs["val_outputs"][:, val_ss_inds]
     
@@ -115,7 +118,7 @@ def ens_evaluation():
         err_inc, all_cor = compute_error_inconsistency(preds=test_pred, tar=test_lab)
         mean_pwa_var = average_variance(inp=net_pwa[mask])
         
-        _, lin_train_idx = train_test_split(np.arange(len(train_lab)), shuffle=True, stratify=train_lab.cpu(), train_size=lin_ens_train_size)
+        _, lin_train_idx = train_test_split(np.arange(len(train_lab)), shuffle=True, stratify=train_lab.cpu(), test_size=lin_ens_train_size)
         lin_train_pred = train_pred[:, lin_train_idx]
         lin_train_lab = train_lab[lin_train_idx]
         
