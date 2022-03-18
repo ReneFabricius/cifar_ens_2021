@@ -13,7 +13,7 @@ class LogisticRegressionTorch:
     
     def fit(self, X, y, lr=0.01, epochs=10, optim='lbfgs', verbose=0):
         n, f = X.shape
-        y = y.to(dtype=torch.float32)
+        y = y.to(dtype=torch.float64)
         self.coef_ = 2 * torch.rand(f, requires_grad=False) - 1
         self.coef_.requires_grad_(True)
         self.intercept_ = torch.zeros(1, requires_grad=True)
@@ -107,29 +107,37 @@ class LogisticRegressionTorchPW:
 
         return dest, tars_dest, uppr_mask, uppr_mask_matrix
 
-    def fit(self, X, y, verbose=0):
+    def fit(self, X, y, max_iter=1000, tolg=1e-5, tolch=1e-9, micro_batch=None, verbose=0):
         n, features = X.shape
         classes = len(torch.unique(y))
         nk = n // classes
         
-        self.coef_ = 2 * torch.rand(size=(classes, classes, features + 1), requires_grad=False) - 1
-        self.coef_.requires_grad_(True)
-        bce_loss = torch.nn.BCEWithLogitsLoss()
-        opt = torch.optim.LBFGS(params=(self.coef_,), lr=1.0, max_iter=1000)
-        
         dest, tars_dest, uppr_mask, uppr_mask_matrix = self._transform_input(X, y)
+
+        self.coef_ = torch.zeros(size=(classes, classes, features + 1), requires_grad=True, dtype=torch.float64)
+        bce_loss = torch.nn.BCEWithLogitsLoss(reduction="sum")
+        opt = torch.optim.LBFGS(params=(self.coef_,), lr=1.0, max_iter=max_iter, tolerance_grad=tolg, tolerance_change=tolch)
+        
+        if micro_batch is None:
+            micro_batch = dest.shape[0]
         
         def closure_loss():
             opt.zero_grad()
             Ws = self.coef_[:, :, 0:-1]
             Bs = self.coef_[:, :, -1]
-            lin_comb = torch.sum(Ws * dest, dim=-1) + Bs
             
-            loss = bce_loss(lin_comb[uppr_mask], tars_dest[uppr_mask])
+            loss = torch.tensor([0], dtype=torch.float64)
+            for mbs in range(0, dest.shape[0], micro_batch):
+                cur_dest = dest[mbs : mbs + micro_batch]
+                cur_tar = tars_dest[mbs : mbs + micro_batch]
+                    
+                lin_comb = torch.sum(Ws * cur_dest, dim=-1) + Bs
+                loss += bce_loss(torch.permute(lin_comb, (1, 2, 0))[uppr_mask_matrix],
+                                 torch.permute(cur_tar, (1, 2, 0))[uppr_mask_matrix])
             
             if self.penalty_ == "l2":
                 l2_pen = torch.sum(torch.pow(self.coef_[:, :, :-1][uppr_mask_matrix], 2))
-                loss += loss + l2_pen / self.C_ / 2
+                loss += l2_pen / self.C_ / 2
             
             loss.backward(retain_graph=True)
             return loss
@@ -142,31 +150,32 @@ class LogisticRegressionTorchPW:
         
     def set_coefs_from_matrix(self, models):
         classes = len(models)
-        feat = len(models[0][1].coef_)
+        feat = len(models[0][1].coef_[0])
         self.coef_ = torch.zeros(classes, classes, feat + 1, dtype=torch.float64) 
         for fc in range(classes):
             for sc in range(fc + 1, classes):
-                self.coef_[fc, sc, :-1] = torch.from_numpy(models[fc][sc].coef_)
-                self.coef_[fc. sc, -1] = torch.from_numpy(models[fc][sc].intercept_)
+                self.coef_[fc, sc, :-1] = torch.from_numpy(models[fc][sc].coef_[0])
+                self.coef_[fc, sc, -1] = torch.from_numpy(models[fc][sc].intercept_)
 
     def compute_loss(self, X, y):
         dest, tars_dest, uppr_mask, uppr_mask_matrix = self._transform_input(X, y)
-        bce_loss = torch.nn.BCEWithLogitsLoss()
+        bce_loss = torch.nn.BCEWithLogitsLoss(reduction="none")
         Ws = self.coef_[:, :, 0:-1]
         Bs = self.coef_[:, :, -1]
         lin_comb = torch.sum(Ws * dest, dim=-1) + Bs
             
-        loss = bce_loss(lin_comb[uppr_mask], tars_dest[uppr_mask])
+        loss = bce_loss(torch.permute(lin_comb, (1, 2, 0))[uppr_mask_matrix], torch.permute(tars_dest, (1, 2, 0))[uppr_mask_matrix])
+        loss = torch.sum(loss, dim=-1)
             
         if self.penalty_ == "l2":
-            l2_pen = torch.sum(torch.pow(self.coef_[:, :, :-1][uppr_mask_matrix], 2))
-            loss += loss + l2_pen / self.C_ / 2
+            l2_pen = torch.sum(torch.pow(self.coef_[:, :, :-1][uppr_mask_matrix], 2), dim=-1)
+            loss += l2_pen / self.C_ / 2
         
         return loss
     
     def compute_loss_per_pair(self, X, y):
         classes = len(torch.unique(y))
-        bce_loss = torch.nn.BCEWithLogitsLoss() 
+        bce_loss = torch.nn.BCEWithLogitsLoss(reduction="sum") 
         losses = torch.zeros(classes, classes)
         for fc in range(classes):
             for sc in range(fc + 1, classes):
@@ -180,7 +189,7 @@ class LogisticRegressionTorchPW:
                 loss = bce_loss(lin_comb, cur_y)
                 if self.penalty_ == "l2":
                     l2_pen = torch.sum(self.coef_[fc, sc, :-1] * self.coef_[fc, sc, :-1])
-                    loss = loss + l2_pen / self.C_ / 2
+                    loss += l2_pen / self.C_ / 2
                 losses[fc, sc] = loss
 
         return losses 
@@ -203,8 +212,6 @@ def comp_loss(model, X, y, penalty, C):
         loss += l2_pen / C / 2
     
     return loss
-
-
 
 
 def comp_weights(n, f, lr=0.01, epochs=10, penalty='none', optim='lbfgs'):
@@ -240,16 +247,16 @@ def comp_weights_iris(lr=0.01, epochs=10, penalty="none", optim='lbfgs', C=1.0, 
     return logreg, logregt, X, y
    
 
-def comp_weights_iris_multcls(penalty="none", C=1.0, verbose=0):
+def comp_weights_iris_multcls(penalty="none", C=1.0, max_iter=1000, tolg=1e-5, tolch=1e-9, micro_batch=None, verbose=0):
     iris = load_iris()
     X = torch.from_numpy(iris['data'])
-    y = torch.from_numpy(iris['target'])
+    y = torch.from_numpy(iris['target']).to(torch.float64)
     
     classes = len(torch.unique(y))
 
     lrpw = LogisticRegressionTorchPW(penalty=penalty, C=C)
     #return lrpw.fit(X, y)
-    lrpw.fit(X, y)
+    lrpw.fit(X, y, max_iter=max_iter, tolg=tolg, tolch=tolch, micro_batch=micro_batch)
     
     lrm = [[None for sc in range(classes)] for fc in range(classes)]
     for fc in range(classes):
