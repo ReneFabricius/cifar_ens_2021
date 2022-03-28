@@ -157,6 +157,11 @@ def ens_evaluation(args_dict=None):
         
             df_ens_pwc.to_csv(pwc_metrics_file, index=False)
             df_ens_cal.to_csv(cal_metrics_file, index=False)
+
+        cal_metrics_up_to = os.path.join(exper_output_folder, "ens_cal_metrics_{}.csv".format(sss))
+        pwc_metrics_up_to = os.path.join(exper_output_folder, "ens_pwc_metrics_{}.csv".format(sss))
+        df_ens_pwc.to_csv(pwc_metrics_up_to, index=False)
+        df_ens_cal.to_csv(cal_metrics_up_to, index=False)
        
     if args.ens_comb_file != "" and os.path.exists(args.ens_comb_file):
         print("Loading ensemble combinations from {}".format(args.ens_comb_file))
