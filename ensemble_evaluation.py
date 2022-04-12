@@ -52,7 +52,7 @@ def ens_evaluation(args_dict=None):
 
     print("Loading networks outputs")
     net_outputs = load_networks_outputs(nn_outputs_path=os.path.join(args.folder, "outputs"), experiment_out_path=exper_output_folder,
-                                        device=args.device, dtype=dtp, load_test_data=req_comb_val_data)
+                                        device=args.device, dtype=dtp, load_train_data=req_comb_val_data)
 
     classes = torch.unique(net_outputs["val_labels"])
     n_classes = len(classes)
