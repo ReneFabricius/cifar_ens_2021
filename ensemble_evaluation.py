@@ -19,7 +19,6 @@ def ens_evaluation(args_dict=None):
         parser.add_argument('-ens_sizes', nargs="+", default=[], help="Ensemble sizes to test")
         parser.add_argument('-ens_comb_file', type=str, default="", help="Path to file with listing of networks combinations to test. Can be used along with -ens_sizes.")
         parser.add_argument('-device', type=str, default="cpu", help="Device to use")
-        parser.add_argument('-cifar', type=int, help="CIFAR type (10 or 100)")
         parser.add_argument('-verbose', default=0, type=int, help="Level of verbosity")
         parser.add_argument('-load_existing_models', type=str, choices=["no", "recalculate", "lazy"], default="no", help="Loading of present models. If no - all computations are performed again, \
                             if recalculate - existing models are loaded, but metrics are calculated again, if lazy - existing models are skipped.")
@@ -34,7 +33,8 @@ def ens_evaluation(args_dict=None):
     else:
         args = args_dict
     
-    lin_ens_train_size = 50 * args.cifar
+    COMBINER_TRAINING_SAMPLES_PER_CLASS = 50
+    
     dtp = torch.float32
     exper_output_folder = os.path.join(args.folder, args.output_folder)
     if not os.path.exists(exper_output_folder):
@@ -47,15 +47,17 @@ def ens_evaluation(args_dict=None):
     net_outputs = load_networks_outputs(nn_outputs_path=os.path.join(args.folder, "outputs"), experiment_out_path=exper_output_folder,
                                         device=args.device, dtype=dtp)
 
-    if args.cifar == 10:
-        CIF10_VAL_SIZE = 500
-        true_val_size = len(net_outputs["val_labels"])
-        if true_val_size > CIF10_VAL_SIZE:
-            print("Warning: subsetting validation set to the size of {}".format(CIF10_VAL_SIZE))
-            _, val_ss_inds = train_test_split(np.arange(true_val_size), test_size=CIF10_VAL_SIZE,
-                                              random_state=42, stratify=net_outputs["val_labels"].cpu())
-            net_outputs["val_labels"] = net_outputs["val_labels"][val_ss_inds]
-            net_outputs["val_outputs"] = net_outputs["val_outputs"][:, val_ss_inds]
+    classes = torch.unique(net_outputs["val_labels"])
+    n_classes = len(classes)
+    val_size = len(net_outputs["val_labels"])
+    
+    if val_size > n_classes * COMBINER_TRAINING_SAMPLES_PER_CLASS:
+        val_subset_size = n_classes * COMBINER_TRAINING_SAMPLES_PER_CLASS
+        print("Warning: subsetting validation set to the size of {}".format(val_subset_size))
+        _, val_ss_inds = train_test_split(np.arange(val_size), test_size=val_subset_size,
+                                            random_state=42, stratify=net_outputs["val_labels"].cpu())
+        net_outputs["val_labels"] = net_outputs["val_labels"][val_ss_inds]
+        net_outputs["val_outputs"] = net_outputs["val_outputs"][:, val_ss_inds]
     
     df_net = evaluate_networks(net_outputs)
     df_net.to_csv(os.path.join(exper_output_folder, "net_metrics.csv"), index=False)
@@ -118,7 +120,8 @@ def ens_evaluation(args_dict=None):
         err_inc, all_cor = compute_error_inconsistency(preds=test_pred, tar=test_lab)
         mean_pwa_var = average_variance(inp=net_pwa[mask])
         
-        _, lin_train_idx = train_test_split(np.arange(len(train_lab)), shuffle=True, stratify=train_lab.cpu(), test_size=lin_ens_train_size)
+        _, lin_train_idx = train_test_split(np.arange(len(train_lab)), shuffle=True, stratify=train_lab.cpu(),
+                                            test_size=n_classes * COMBINER_TRAINING_SAMPLES_PER_CLASS)
         lin_train_pred = train_pred[:, lin_train_idx]
         lin_train_lab = train_lab[lin_train_idx]
         
