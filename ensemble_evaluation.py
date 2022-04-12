@@ -8,6 +8,7 @@ import numpy as np
 import torch
 
 from weensembles.CalibrationMethod import TemperatureScaling
+from weensembles.CombiningMethods import comb_picker
 from weensembles.predictions_evaluation import compute_error_inconsistency
 from utils import load_networks_outputs, evaluate_ens, evaluate_networks, linear_pw_ens_train_save, calibrating_ens_train_save, pairwise_accuracies_mat, average_variance
 
@@ -35,6 +36,12 @@ def ens_evaluation(args_dict=None):
     
     COMBINER_TRAINING_SAMPLES_PER_CLASS = 50
     
+    req_comb_val_data = False
+    for comb_m_name in args.combining_methods:
+        comb_m = comb_picker(comb_m_name, c=0, k=0)
+        if comb_m.req_val_:
+            req_comb_val_data = True
+    
     dtp = torch.float32
     exper_output_folder = os.path.join(args.folder, args.output_folder)
     if not os.path.exists(exper_output_folder):
@@ -45,7 +52,7 @@ def ens_evaluation(args_dict=None):
 
     print("Loading networks outputs")
     net_outputs = load_networks_outputs(nn_outputs_path=os.path.join(args.folder, "outputs"), experiment_out_path=exper_output_folder,
-                                        device=args.device, dtype=dtp)
+                                        device=args.device, dtype=dtp, load_test_data=req_comb_val_data)
 
     classes = torch.unique(net_outputs["val_labels"])
     n_classes = len(classes)
@@ -111,21 +118,25 @@ def ens_evaluation(args_dict=None):
             
         mask = [net in comb for net in networks]
         nets_string = '+'.join(sorted(comb)) + "_"
-        train_pred = net_outputs["train_outputs"][mask]
         val_pred = net_outputs["val_outputs"][mask]
         test_pred = net_outputs["test_outputs"][mask]
-        train_lab = net_outputs["train_labels"]
         val_lab = net_outputs["val_labels"]
         test_lab = net_outputs["test_labels"]
         
         err_inc, all_cor = compute_error_inconsistency(preds=test_pred, tar=test_lab)
         mean_pwa_var = average_variance(inp=net_pwa[mask])
-        
-        _, lin_train_idx = train_test_split(np.arange(len(train_lab)), shuffle=True, stratify=train_lab.cpu(),
-                                            test_size=n_classes * COMBINER_TRAINING_SAMPLES_PER_CLASS)
-        combiner_val_pred = train_pred[:, lin_train_idx]
-        combiner_val_lab = train_lab[lin_train_idx]
-        
+       
+        if req_comb_val_data: 
+            train_pred = net_outputs["train_outputs"][mask]
+            train_lab = net_outputs["train_labels"]
+            _, lin_train_idx = train_test_split(np.arange(len(train_lab)), shuffle=True, stratify=train_lab.cpu(),
+                                                test_size=n_classes * COMBINER_TRAINING_SAMPLES_PER_CLASS)
+            combiner_val_pred = train_pred[:, lin_train_idx]
+            combiner_val_lab = train_lab[lin_train_idx]
+        else:
+            combiner_val_pred = None
+            combiner_val_lab = None
+            
         cal_ens_outputs = calibrating_ens_train_save(predictors=val_pred, targets=val_lab, test_predictors=test_pred,
                                                         device=args.device, out_path=exper_output_folder, calibrating_methods=[TemperatureScaling],
                                                         prefix=nets_string, verbose=args.verbose, networks=comb, load_existing_models=args.load_existing_models,
