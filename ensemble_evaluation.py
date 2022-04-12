@@ -59,6 +59,7 @@ def ens_evaluation(args_dict=None):
         net_outputs["val_labels"] = net_outputs["val_labels"][val_ss_inds]
         net_outputs["val_outputs"] = net_outputs["val_outputs"][:, val_ss_inds]
     
+    print("Evaluating networks")
     df_net = evaluate_networks(net_outputs)
     df_net.to_csv(os.path.join(exper_output_folder, "net_metrics.csv"), index=False)
     
@@ -122,8 +123,8 @@ def ens_evaluation(args_dict=None):
         
         _, lin_train_idx = train_test_split(np.arange(len(train_lab)), shuffle=True, stratify=train_lab.cpu(),
                                             test_size=n_classes * COMBINER_TRAINING_SAMPLES_PER_CLASS)
-        lin_train_pred = train_pred[:, lin_train_idx]
-        lin_train_lab = train_lab[lin_train_idx]
+        combiner_val_pred = train_pred[:, lin_train_idx]
+        combiner_val_lab = train_lab[lin_train_idx]
         
         cal_ens_outputs = calibrating_ens_train_save(predictors=val_pred, targets=val_lab, test_predictors=test_pred,
                                                         device=args.device, out_path=exper_output_folder, calibrating_methods=[TemperatureScaling],
@@ -136,12 +137,12 @@ def ens_evaluation(args_dict=None):
             cal_ens_df[["combination_size", "combination_id", "err_incons", "all_cor", "mean_pwa_var"]] = [comb_size, comb_id, err_inc, all_cor, mean_pwa_var]
             df_ens_cal = pd.concat([df_ens_cal, cal_ens_df], ignore_index=True)
 
-        lin_ens_outputs = linear_pw_ens_train_save(predictors=lin_train_pred, targets=lin_train_lab, test_predictors=test_pred,
+        lin_ens_outputs = linear_pw_ens_train_save(predictors=val_pred, targets=val_lab, test_predictors=test_pred,
                                                     device=args.device, out_path=exper_output_folder, networks=comb,
                                                     combining_methods=args.combining_methods,
                                                     coupling_methods=args.coupling_methods, prefix=nets_string,
-                                                    verbose=args.verbose, val_predictors=val_pred,
-                                                    val_targets=val_lab, load_existing_models=args.load_existing_models,
+                                                    verbose=args.verbose, val_predictors=combiner_val_pred,
+                                                    val_targets=combiner_val_lab, load_existing_models=args.load_existing_models,
                                                     computed_metrics=df_ens_pwc, all_networks=networks,
                                                     save_sweep_C=args.save_sweep_C)
         

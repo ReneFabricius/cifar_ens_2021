@@ -60,15 +60,16 @@ def ens_exp():
         co_m_train_outputs = net_outputs["train_outputs"][:, co_m_train_idx, :]
         co_m_train_labels = net_outputs["train_labels"][co_m_train_idx]
 
-        vt_test_ens_results = linear_pw_ens_train_save(net_outputs["val_outputs"], net_outputs["val_labels"],
-                                                       net_outputs["test_outputs"],
-                                                       torch.device(args.device),
-                                                       vt_out_path, combining_methods=combining_methods,
+        vt_test_ens_results = linear_pw_ens_train_save(predictors=net_outputs["val_outputs"], targets=net_outputs["val_labels"],
+                                                       test_predictors=net_outputs["test_outputs"],
+                                                       device=torch.device(args.device),
+                                                       out_path=vt_out_path, combining_methods=combining_methods,
                                                        coupling_methods=coupling_methods)
 
-        tt_test_ens_results = linear_pw_ens_train_save(co_m_train_outputs, co_m_train_labels, net_outputs["test_outputs"],
-                                                       torch.device(args.device),
-                                                       tt_out_path, combining_methods=combining_methods,
+        tt_test_ens_results = linear_pw_ens_train_save(predictors=co_m_train_outputs, targets=co_m_train_labels, 
+                                                       test_predictors=net_outputs["test_outputs"],
+                                                       device=torch.device(args.device),
+                                                       out_path=tt_out_path, combining_methods=combining_methods,
                                                        coupling_methods=coupling_methods)
 
         df_ens_repli_vt = evaluate_ens(ens_outputs=vt_test_ens_results, tar=net_outputs["test_labels"])
