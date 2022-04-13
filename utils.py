@@ -759,3 +759,31 @@ def compute_pw_metrics(R, tar):
                        "pw_ece_mean": [ece_mean], "pw_ece_var": [ece_var], "pw_ece_min": [ece_min], "pw_ece_max": [ece_max]})
     
     return df
+
+
+def bc_mapping(k):
+    rws = int(k * (k - 1) / 2)
+    # Mapping h is used such that elements of {1, ..., k(k-1)/2}
+    # are placed into upper triangle of k x k matrix row by row from left to right.
+    M = torch.zeros(rws, k - 1)
+    for c in range(k - 1):
+        rs = int((c + 1) * k - (c + 1) * (c + 2) / 2)
+        re = int((c + 2) * k - (c + 2) * (c + 3) / 2)
+        M[rs:re, c] = -1
+        oi = c
+        cs = 0
+        while oi >= 0:
+            M[cs + oi, c] = 1
+            oi -= 1
+            cs += k - (c - oi)
+            
+    # More effective (hopefully)
+    triu_ind = torch.triu_indices(k, k, offset=1)
+    ones = triu_ind[1].unsqueeze(0).expand(k - 1, rws)
+    rang = torch.arange(1, k).unsqueeze(1)
+    M_ef = torch.zeros(k - 1, rws)
+    M_ef[ones == rang] = 1
+    min_ones = triu_ind[0].unsqueeze(0).expand(k - 1, rws)
+    M_ef[min_ones == rang] = -1
+
+    return M, M_ef
