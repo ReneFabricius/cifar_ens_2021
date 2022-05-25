@@ -236,7 +236,7 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
                 fun=lambda bsz: ens.predict_proba(MP=test_predictors, coupling_method=cp_m, batch_size=bsz, verbose=verbose),
                 start_bsz=test_predictors.shape[1],
                 verbose=verbose,
-                device=device)
+                device=device).detach().cpu()
 
             ens_test_results.store(co_m, cp_m, ens_test_out_method, R_mat=None)
             np.save(os.path.join(out_path,
@@ -670,6 +670,7 @@ def evaluate_ens(ens_outputs, tar):
                 if pred is None:
                     continue
                 
+                pred = pred.to(device=tar.device)
                 acc = compute_acc_topk(pred=pred, tar=tar, k=1)
                 nll = compute_nll(pred=pred, tar=tar)
                 ece = ECE_sweep(pred=pred, tar=tar)
@@ -700,6 +701,7 @@ def evaluate_ens(ens_outputs, tar):
             if pred is None:
                 continue
             
+            pred = pred.to(device=tar.device)
             acc = compute_acc_topk(pred=pred, tar=tar, k=1)
             nll = compute_nll(pred=pred, tar=tar)
             ece = ECE_sweep(pred=pred, tar=tar)
