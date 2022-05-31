@@ -2,7 +2,7 @@ import torch
 from timeit import default_timer as timer
 import sys
 
-from utils import print_memory_statistics
+from utils.utils import print_memory_statistics
 from weensembles.utils import gen_probs_one_source, cuda_mem_try
 from weensembles.CouplingMethods import coup_picker
 

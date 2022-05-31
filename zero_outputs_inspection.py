@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import os
 
-from utils import load_networks_outputs, load_npy_arr
+from utils.utils import load_networks_outputs, load_npy_arr
 
 from weensembles.WeightedLinearEnsemble import WeightedLinearEnsemble
 

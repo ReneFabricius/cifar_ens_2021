@@ -10,7 +10,7 @@ import torch
 from weensembles.CalibrationMethod import TemperatureScaling
 from weensembles.CombiningMethods import comb_picker
 from weensembles.predictions_evaluation import compute_error_inconsistency
-from utils import load_networks_outputs, evaluate_ens, evaluate_networks, linear_pw_ens_train_save, calibrating_ens_train_save, pairwise_accuracies_mat, average_variance
+from utils.utils import load_networks_outputs, evaluate_ens, evaluate_networks, linear_pw_ens_train_save, calibrating_ens_train_save, pairwise_accuracies_mat, average_variance
 
 
 def ens_evaluation(args_dict=None):
@@ -18,7 +18,8 @@ def ens_evaluation(args_dict=None):
         parser = argparse.ArgumentParser()
         parser.add_argument('-folder', type=str, help="Replication folder")
         parser.add_argument('-ens_sizes', nargs="+", default=[], help="Ensemble sizes to test")
-        parser.add_argument('-ens_comb_file', type=str, default="", help="Path to file with listing of networks combinations to test. Can be used along with -ens_sizes.")
+        parser.add_argument('-ens_comb_file', type=str, default="",
+                            help="Path to file with listing of networks combinations to test. Can be used along with -ens_sizes. Each combination should be specified on separate line by network names separated by commas.")
         parser.add_argument('-device', type=str, default="cpu", help="Device to use")
         parser.add_argument('-verbose', default=0, type=int, help="Level of verbosity")
         parser.add_argument('-load_existing_models', type=str, choices=["no", "recalculate", "lazy"], default="no", help="Loading of present models. If no - all computations are performed again, \
@@ -28,6 +29,7 @@ def ens_evaluation(args_dict=None):
         parser.add_argument('-coupling_methods', nargs='+', default=['m2'], help="Coupling methods to use")
         parser.add_argument('-save_C', dest='save_sweep_C', action='store_true', help="Whether to save regularization coefficients C for logreg methods with sweep_C. Defaults to False.")
         parser.add_argument('-output_folder', type=str, default="exp_ensemble_evaluation", help="Folder name to save the outputs to.")
+        parser.add_argument('-topl', nargs="+", default=[-1], help="Topl values to test")
         parser.set_defaults(compute_pwm=False)
         parser.set_defaults(save_sweep_C=False)
         args = parser.parse_args()
@@ -155,7 +157,7 @@ def ens_evaluation(args_dict=None):
                                                     verbose=args.verbose, val_predictors=combiner_val_pred,
                                                     val_targets=combiner_val_lab, load_existing_models=args.load_existing_models,
                                                     computed_metrics=df_ens_pwc, all_networks=networks,
-                                                    save_sweep_C=args.save_sweep_C)
+                                                    save_sweep_C=args.save_sweep_C, topl_values=args.topl)
         
         lin_ens_df = evaluate_ens(ens_outputs=lin_ens_outputs, tar=test_lab)
         if lin_ens_df.shape[0] > 0:

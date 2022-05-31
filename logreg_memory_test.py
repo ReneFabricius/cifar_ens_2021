@@ -5,7 +5,7 @@ import torch
 
 from weensembles.CombiningMethods import comb_picker
 from weensembles.predictions_evaluation import compute_error_inconsistency
-from utils import load_networks_outputs, print_memory_statistics
+from utils.utils import load_networks_outputs, print_memory_statistics
 from weensembles.WeightedLinearEnsemble import WeightedLinearEnsemble
 
 def test_mem(net_outputs=r'D:\skola\1\weighted_ensembles\tests\test_IM2012_2022\data\outputs', device="cuda"):

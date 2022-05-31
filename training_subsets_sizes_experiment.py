@@ -6,7 +6,7 @@ from sklearn.model_selection import StratifiedShuffleSplit
 
 import torch
 
-from utils import load_networks_outputs, evaluate_networks, linear_pw_ens_train_save, evaluate_ens
+from utils.utils import load_networks_outputs, evaluate_networks, linear_pw_ens_train_save, evaluate_ens
 
 EXP_OUTPUTS_FOLDER = 'exp_subsets_sizes_train_outputs'
 

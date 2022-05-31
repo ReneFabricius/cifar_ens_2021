@@ -11,7 +11,7 @@ from weensembles.CombiningMethods import grad_comb
 from weensembles.predictions_evaluation import ECE_sweep, compute_acc_topk, compute_nll
 from weensembles.utils import cuda_mem_try
 
-from utils import load_networks_outputs
+from utils.utils import load_networks_outputs
 
 def test_grad():
     parser = argparse.ArgumentParser()

@@ -9,7 +9,7 @@ import torch
 from sklearn.model_selection import StratifiedKFold
 from itertools import combinations
 
-from utils import evaluate_ens, evaluate_networks, linear_pw_ens_train_save, load_networks_outputs, print_memory_statistics
+from utils.utils import evaluate_ens, evaluate_networks, linear_pw_ens_train_save, load_networks_outputs, print_memory_statistics
 
 ENS_OUTPUTS_FOLDER = 'comb_outputs'
 TRAIN_TRAIN = 'train_training'

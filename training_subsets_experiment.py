@@ -6,7 +6,7 @@ from sklearn.model_selection import StratifiedKFold
 
 import torch
 
-from utils import load_networks_outputs, linear_pw_ens_train_save, evaluate_ens, evaluate_networks
+from utils.utils import load_networks_outputs, linear_pw_ens_train_save, evaluate_ens, evaluate_networks
 
 TRAIN_OUTPUTS_FOLDER = 'exp_subsets_train_outputs'
 
@@ -54,7 +54,7 @@ def ens_train_exp():
                                                         device=torch.device(args.device), out_path=exper_outputs_path,
                                                         combining_methods=combining_methods,
                                                         coupling_methods=coupling_methods, prefix=(str(fold_i) + "_"),
-                                                        double_accuracy=(dtype == "double"))
+                                                        double_precision=(dtype == "double"))
 
             ens_df_dtp = evaluate_ens(ens_outputs=test_ens_results, tar=net_outputs["test_labels"])
             ens_df_dtp["precision"] = dtype

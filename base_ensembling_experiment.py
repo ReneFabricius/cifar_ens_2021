@@ -7,7 +7,7 @@ import pandas as pd
 import torch
 from sklearn.model_selection import train_test_split
 
-from utils import linear_pw_ens_train_save, load_networks_outputs, evaluate_networks, evaluate_ens
+from utils.utils import linear_pw_ens_train_save, load_networks_outputs, evaluate_networks, evaluate_ens
 
 ENS_OUTPUTS_FOLDER = 'comb_outputs'
 TRAIN_TRAIN = 'train_training'

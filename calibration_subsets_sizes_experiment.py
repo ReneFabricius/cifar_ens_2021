@@ -9,7 +9,7 @@ from weensembles.predictions_evaluation import compute_acc_topk, compute_nll, EC
 
 import torch
 
-from utils import load_networks_outputs, calibrating_ens_train_save, evaluate_networks, evaluate_ens
+from utils.utils import load_networks_outputs, calibrating_ens_train_save, evaluate_networks, evaluate_ens
 
 EXP_OUTPUTS_FOLDER = 'exp_subsets_sizes_calibration_outputs'
 

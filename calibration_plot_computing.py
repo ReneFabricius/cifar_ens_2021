@@ -5,7 +5,7 @@ import argparse
 import os
 import pandas as pd
 
-from utils import compute_calibration_plot, load_networks_outputs, load_npy_arr
+from utils.utils import compute_calibration_plot, load_networks_outputs, load_npy_arr
 
 def comp_plot_data():
     parser = argparse.ArgumentParser()
