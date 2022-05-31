@@ -1,17 +1,23 @@
 import os
 from pickle import load
+from attr import frozen
 import numpy as np
 import pandas as pd
 import torch
 import regex as re
 import gc
-from weensembles.CouplingMethods import coup_picker
+import itertools
+from csv import reader
+from typing import List, Tuple
+from typing_extensions import Literal
 
 from weensembles.WeightedLinearEnsemble import WeightedLinearEnsemble
 from weensembles.predictions_evaluation import ECE_sweep, compute_acc_topk, compute_nll
 from weensembles.CalibrationEnsemble import CalibrationEnsemble
 from weensembles.CombiningMethods import comb_picker
 from weensembles.utils import cuda_mem_try
+from weensembles.CouplingMethods import coup_picker
+from utils.computation_plan import ComputationPlanCAL, ComputationPlanPWC
 
 
 def load_npy_arr(file, device, dtype):
@@ -69,34 +75,232 @@ def load_networks_outputs(nn_outputs_path, experiment_out_path=None, device='cpu
     
     return ret
 
+def prepare_computation_plan(outputs_folder: str,
+                             networks_names: List[str],
+                             combination_sizes: List[int],
+                             ens_comb_file: str,
+                             combining_methods: List[str],
+                             coupling_methods: List[str],
+                             topl_values: List[int],
+                             calibrating_methods: List[str],
+                             computational_precisions: List[str],
+                             loading_existing_models: Literal["no", "recalculate", "lazy"]
+                             )-> Tuple[ComputationPlanPWC, ComputationPlanCAL, pd.DataFrame, pd.DataFrame]:
+    """ Creates computation plan for specified experiment. Based on value of loading_existing_models
+    checks existing models or metrics and performs only the required computations.
+    If there is a network in metrics which is not present in networks_names, the output may be incorrect.
+    Args:
+        outputs_folder (str): Folder containing models and metrics.
+        networks_names (List[str]): List of combined networks names.
+        combination_sizes (List[int]): List of combination sizes.
+        ens_comb_file (str): File containing in each row comma separated names of networks which are to be tested in a combination. 
+        combining_methods (List[str]): List of combining methods names to use.
+        coupling_methods (List[str]): List of coupling methods names to use.
+        topl_values (List[int]): List of topl values to use. Value -1 means topl equal to number of classes.
+        calibrating_methods (List[str]): List of calibrating methods to use.
+        computational_precisions (List[str]): List of computational precisions to use. Valid values are float and double.
+        loading_existing_models (Literal[&quot;no&quot;, &quot;recalculate&quot;, &quot;lazy&quot;]): If no is selected,
+        all computations are planned to be performed again. If recalculate is selected, existing models are planned to be 
+        loaded and results to be recalculated. If lazy is selected only necesarry computations are planned to be performed.
+
+    Raises:
+        RuntimeError: In existing metrics contain inconsistent combination ids.
+
+    Returns:
+        Tuple[ComputationPlanPWC, ComputationPlanCAL, pd.DataFrame, pd.DataFrame]: First two are computation plans
+        for pairwise ensemble and calibrating ensemble. Another two are modified loaded metrics of pairwise ensemble and
+        calibrating ensemble.
+    """
+    
+    
+    # Create all combinations of given networks having specified sizes
+    net_combinations = set([frozenset(comb)
+                                for combinations in [itertools.combinations(networks_names, comb_size) for comb_size in combination_sizes]
+                                    for comb in combinations])
+    
+    # Add combinations specified in ens_comb_file
+    if ens_comb_file is not None:
+        nets_set = set(networks_names)
+        with open(ens_comb_file) as comb_file:
+            comb_file_reader = reader(comb_file)
+            for row in comb_file_reader:
+                combination = frozenset(row)
+                if not combination.issubset(nets_set):
+                    print("Warning: some network in combination {} is not a part of available network outputs: {}".format(
+                        combination, nets_set
+                    ))
+                    continue
+                net_combinations.add(combination)
+    
+    # Transform combinations into a DataFrame with a column for each network and boolean indicating presence of that network in the combination
+    combinations_df = pd.DataFrame(data=[[net in comb for net in networks_names] for comb in net_combinations],
+                                   columns=networks_names)
+    
+    max_combination_id = 0
+    if loading_existing_models == "lazy":
+        # Load existing metrics and add an empty column of False for networks 
+        # which are present in networks_names and not present in the existing metrics files
+        cal_metrics_file = os.path.join(outputs_folder, "ens_cal_metrics.csv")
+        pwc_metrics_file = os.path.join(outputs_folder, "ens_pwc_metrics.csv")
+        if os.path.exists(cal_metrics_file):
+            cal_metrics = pd.read_csv(cal_metrics_file)
+            if cal_metrics.shape[0] > 0:
+                for net in networks_names:
+                    if net not in cal_metrics.columns:
+                        cal_metrics[net] = False
+            else:
+                cal_metrics = None
+        else:
+            cal_metrics = None
+        if os.path.exists(pwc_metrics_file):
+            pwc_metrics = pd.read_csv(pwc_metrics_file)
+            if pwc_metrics.shape[0] > 0:
+                for net in networks_names:
+                    if net not in pwc_metrics.columns:
+                        pwc_metrics[net] = False
+            else:
+                pwc_metrics = None
+        else:
+            pwc_metrics = None
+    else:
+        pwc_metrics = None
+        cal_metrics = None
+    
+    if cal_metrics is not None or pwc_metrics is not None:
+        if cal_metrics is not None:
+            cal_combs = cal_metrics[networks_names + ["combination_id"]].copy(deep=True)
+            cal_combs.drop_duplicates(inplace=True)
+        if pwc_metrics is not None:
+            pwc_combs = pwc_metrics[networks_names + ["combination_id"]].copy(deep=True)
+            pwc_combs.drop_duplicates(inplace=True)
+        
+        if cal_metrics is not None and pwc_metrics is not None:
+            # Check if there are some conflicts, ie. different combination_id for the same combination in pwc and cal metrics
+            combined_combs = cal_combs.merge(pwc_combs, on=networks_names, how="inner", suffixes=["l", "r"])
+            conflicts = combined_combs[combined_combs["combination_idl"] != combined_combs["combination_idr"]]
+            if conflicts.shape[0] > 0:
+                raise RuntimeError("Conflicting combination_ids in calibrating ens metrics and pairwise ens metrics: {}".format(conflicts))
+            
+            existing_combs = pd.concat([cal_combs, pwc_combs]).drop_duplicates()
+        else:
+            if cal_combs is not None:
+                existing_combs = cal_combs
+            else:
+                existing_combs = pwc_combs
+            # existing_combs contain combinations with combination_ids in existing metrics
+    else:
+        existing_combs = pd.DataFrame(columns=networks_names + ["combination_id"])
+    
+    combinations_df = combinations_df.merge(existing_combs, how="left", on=networks_names)
+    combinations_df["combination_id"] = combinations_df["combination_id"].astype(pd.Int64Dtype())
+    max_combination_id = combinations_df["combination_id"].max()
+    max_combination_id = 0 if pd.isna(max_combination_id) else max_combination_id
+    num_na_ids = combinations_df["combination_id"].isna().sum()
+    # Assign unique combination ids to new combinations
+    combinations_df.loc[combinations_df["combination_id"].isna(), "combination_id"] = range(max_combination_id + 1, max_combination_id + 1 + num_na_ids)
+    
+    # Add columns possibly missing from previous versions
+    if pwc_metrics is not None:
+        if "computational_precision" not in pwc_metrics.columns:
+            pwc_metrics["computational_precision"] = "float"
+        if "topl" not in pwc_metrics.columns:
+            pwc_metrics["topl"] = -1
+
+    if cal_metrics is not None:
+        if "computational_precision" not in cal_metrics.columns:
+            cal_metrics["computational_precision"] = "float"
+        
+    # Create all configurations of requested hyperparameter values
+    pwc_configs = pd.DataFrame(
+        data=list(itertools.product(combinations_df["combination_id"], combining_methods, coupling_methods, topl_values, computational_precisions)),
+        columns=["combination_id", "combining_method", "coupling_method", "topl", "computational_precision"])
+    pwc_configs = combinations_df.merge(pwc_configs, how="right", on=["combination_id"])
+    
+    cal_configs = pd.DataFrame(
+        data=list(itertools.product(combinations_df["combination_id"], calibrating_methods, computational_precisions)),
+        columns=["combination_id", "calibrating_method", "computational_precision"])
+    cal_configs = combinations_df.merge(cal_configs, how="right", on=["combination_id"])
+    
+    # Return all configurations if we are not loading any models
+    if loading_existing_models == "no":
+        pwc_configs["model_file"] = np.nan
+        cal_configs["model_file"] = np.nan
+        
+        return ComputationPlanPWC(pwc_configs), ComputationPlanCAL(cal_configs), pd.DataFrame(), pd.DataFrame()
+    
+    # If we are lazy, remove all configurations which already have computed metrics
+    if loading_existing_models == "lazy":
+        if pwc_metrics is not None:
+            pwc_configs_merged = pwc_configs.merge(pwc_metrics, how="left", on=list(pwc_configs.columns), indicator=True)
+            pwc_configs = pwc_configs_merged[pwc_configs_merged["_merge"] == "left_only"][pwc_configs.columns]
+       
+        if cal_metrics is not None: 
+            cal_configs_merged = cal_configs.merge(cal_metrics, how="left", on=list(cal_configs.columns), indicator=True)
+            cal_configs = cal_configs_merged[cal_configs_merged["_merge"] == "left_only"][cal_configs.columns]
+    
+    # Find existing models in outputs folder
+    ex_pwc = re.compile(r"^(?P<nets>.*?)_model_co_m_(?P<comb_m>.*?)_prec_(?P<prec>.*?)$")
+    ex_cal = re.compile(r"^(?P<nets>.*?)_model_cal_m_(?P<cal_m>.*?)_prec_(?P<prec>.*?)$")
+        
+    pwc_models = [mtch for mtch in map(ex_pwc.match, os.listdir(outputs_folder)) if mtch is not None]
+    cal_models = [mtch for mtch in map(ex_cal.match, os.listdir(outputs_folder)) if mtch is not None]
+    
+    existing_pwc_models = []
+    for pwc_model in pwc_models:
+        constituents = set(pwc_model["nets"].split('+'))
+        net_mask = [net in constituents for net in networks_names]
+        if sum(net_mask) == len(constituents):  # If all the constituents are present in networks_names
+            existing_pwc_models.append(net_mask + [pwc_model["comb_m"], pwc_model["prec"], pwc_model.string])
+    
+    existing_pwc_models = pd.DataFrame(data=existing_pwc_models, columns=networks_names + ["combining_method", "computational_precision", "model_file"])
+    
+    existing_cal_models = []
+    for cal_model in cal_models:
+        constituents = set(cal_model["nets"].split('+'))
+        net_mask = [net in constituents for net in networks_names]
+        if sum(net_mask) == len(constituents):  # If all the constituents are present in networks_names
+            existing_cal_models.append(net_mask + [cal_model["cal_m"], cal_model["prec"], cal_model.string])
+        
+    existing_cal_models = pd.DataFrame(data=existing_cal_models, columns=networks_names + ["calibrating_method", "computational_precision", "model_file"])
+    
+    pwc_configs = pwc_configs.merge(existing_pwc_models, how="left", on=networks_names + ["combining_method", "computational_precision"])
+    cal_configs = cal_configs.merge(existing_cal_models, how="left", on=networks_names + ["calibrating_method", "computational_precision"])
+
+    return ComputationPlanPWC(plan=pwc_configs), ComputationPlanCAL(plan=cal_configs), pwc_metrics, cal_metrics
+    
+    
 class LinearPWEnsOutputs:
-    def __init__(self, combining_methods, coupling_methods, store_R=False):
+    def __init__(self, combining_methods, coupling_methods, topl_values, store_R=False):
         self.comb_m_ = combining_methods
         self.coup_m_ = coupling_methods
+        self.topl_values_ = topl_values
 
-        self.outputs_ = [[None for cp_m in coupling_methods] for co_m in combining_methods]
+        self.outputs_ = [[[None for topl in topl_values] for cp_m in coupling_methods] for co_m in combining_methods]
         
         self.has_R_ = store_R
         if store_R:
-            self.R_mats_ = [None for co_m in combining_methods]
+            self.R_mats_ = [[None for topl in topl_values] for co_m in combining_methods]
 
-    def store(self, combining_method, coupling_method, output, R_mat=None):
+    def store(self, combining_method, coupling_method, topl, output, R_mat=None):
         co_i = self.comb_m_.index(combining_method)
         cp_i = self.coup_m_.index(coupling_method)
-        self.outputs_[co_i][cp_i] = output
+        topl_i = self.topl_values_.index(topl)
+        self.outputs_[co_i][cp_i][topl_i] = output
         if self.has_R_ and R_mat is not None:
-            self.R_mats_[co_i] = R_mat
+            self.R_mats_[co_i][topl_i] = R_mat
 
-    def get(self, combining_method, coupling_method):
+    def get(self, combining_method, coupling_method, topl):
         co_i = self.comb_m_.index(combining_method)
         cp_i = self.coup_m_.index(coupling_method)
-        return self.outputs_[co_i][cp_i]
+        topl_i = self.topl_values_.index(topl)
+        return self.outputs_[co_i][cp_i][topl_i]
     
-    def get_R(self, combining_method):
+    def get_R(self, combining_method, topl):
         if not self.has_R_:
             return None
         co_i = self.comb_m_.index(combining_method)
-        return self.R_mats_[co_i]
+        topl_i = self.topl_values_.index(topl)
+        return self.R_mats_[co_i][topl_i]
         
     def get_combining_methods(self):
         return self.comb_m_
@@ -104,6 +308,8 @@ class LinearPWEnsOutputs:
     def get_coupling_methods(self):
         return self.coup_m_
 
+    def get_topl_values(self):
+        return self.topl_values_
 
 class CalibratingEnsOutputs:
     def __init__(self, calibrating_methods, networks):
@@ -134,10 +340,10 @@ class CalibratingEnsOutputs:
 
 def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_path, combining_methods,
                              coupling_methods, networks,
-                             double_accuracy=False, prefix='', verbose=0,
+                             double_precision=False, prefix='', verbose=0,
                              val_predictors=None, val_targets=None,
                              load_existing_models="no", computed_metrics=None, all_networks=None,
-                             save_sweep_C=False):
+                             save_sweep_C=False, topl_values=[-1]):
     """
     Trains LinearWeightedEnsemble using all possible combinations of provided combining_methods and coupling_methods.
     Combines outputs given in test_predictors, saves them and returns them in an instance of LinearPWEnsOutputs.
@@ -165,13 +371,15 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
         computed_metrics (pandas.Dataframe): Already computed metrics. Required if load_existing_models is lazy.
         all_networks (list): List of all networks names in the experiment. Required if load_existing_models is lazy.
         save_sweep_C (bool, optional): Whether to save C coefficients of logreg combining methods using sweep_C. Defaults to False.
+        topl_values (list[int], optional): List of topl values to test in inferrence. Defaults to [-1] which uses topl = number of classes.
     Raises:
         rerr: [description]
 
     Returns:
         LinearPWEnsOutputs: Obtained test predictions.
     """
-    dtp = torch.float64 if double_accuracy else torch.float32
+    c, n, k = predictors.shape if predictors is not None else (0, 0, 0)
+    dtp = torch.float64 if double_precision else torch.float32
     ens_test_results = LinearPWEnsOutputs(combining_methods, coupling_methods, store_R=False)
     if load_existing_models == "lazy":
         net_mask = [net in networks for net in all_networks]
@@ -189,9 +397,9 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
     for co_mi, co_m in enumerate(combining_methods):
         if verbose > 0:
             print("Processing combining method {}".format(co_m))
-        model_file = os.path.join(out_path, prefix + co_m + '_model_{}'.format("double" if double_accuracy else "float"))
+        model_file = os.path.join(out_path, prefix + co_m + '_model_{}'.format("double" if double_precision else "float"))
         model_loaded = False
-        co_m_fun = comb_picker(co_m, c=0, k=0, device=device, dtype=dtp)
+        co_m_fun = comb_picker(co_m, c=c, k=k, device=device, dtype=dtp)
         if co_m_fun.req_val_ and (val_predictors is None or val_targets is None):
             raise ValueError("Combining method {} requires validation data, but val_predictors or val_targets are None".format(co_m))
         
@@ -201,8 +409,13 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
 
         metrics_exist = False
         if load_existing_models == "lazy" and computed_metrics.shape[0] > 0:
+            # Pick ensembles with correct set of networks.
             comb_metrics = computed_metrics[(computed_metrics[all_networks] == net_mask).prod(axis=1) == 1]
+            # Pick ensembles which have one of the specified coupling methods
             co_comb_metrics = comb_metrics[comb_metrics["combining_method"] == co_m]
+            
+            
+            
             if co_comb_metrics.shape[0] == len(coupling_methods):
                 metrics_exist = True
             else:
@@ -225,10 +438,10 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
         if not model_loaded:
             ens.save(model_file)
             ens.save_coefs_csv(
-                os.path.join(out_path, prefix + co_m + '_coefs_{}.csv'.format("double" if double_accuracy else "float")))
+                os.path.join(out_path, prefix + co_m + '_coefs_{}.csv'.format("double" if double_precision else "float")))
             if save_C:
                 ens.save_C_coefs(
-                    os.path.join(out_path, prefix + co_m + '_coefs_C_{}.csv'.format("double" if double_accuracy else "float"))
+                    os.path.join(out_path, prefix + co_m + '_coefs_C_{}.csv'.format("double" if double_precision else "float"))
                 )
 
         for cp_mi, cp_m in enumerate(coupling_methods):
@@ -241,7 +454,7 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
             ens_test_results.store(co_m, cp_m, ens_test_out_method, R_mat=None)
             np.save(os.path.join(out_path,
                                  "{}ens_test_outputs_co_{}_cp_{}_prec_{}.npy".format(prefix, co_m, cp_m,
-                                                                                     ("double" if double_accuracy else "float"))),
+                                                                                     ("double" if double_precision else "float"))),
                     ens_test_out_method.detach().cpu().numpy())
 
     return ens_test_results

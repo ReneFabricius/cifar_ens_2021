@@ -1,0 +1,2 @@
+calibrating_method,accuracy,nll,ece,densenet201,clip_ViT-B-16_LP,combination_size,combination_id,err_incons,all_cor,mean_pwa_var
+TemperatureScaling,0.79772,0.7975190877914429,0.12244042009115219,True,True,2,1,0.18435999751091003,0.663,0.0002651164832059294
