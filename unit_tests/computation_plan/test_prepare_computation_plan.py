@@ -5,7 +5,7 @@ import numpy as np
 
 class Test_PrepCompPlan(unittest.TestCase):
     def test_empty_folder_pwc_plan(self):
-        pwc_plan, cal_plan, pwc_metric, cal_metric = prepare_computation_plan(
+        pwc_plan, cal_plan = prepare_computation_plan(
             outputs_folder="./unit_tests/computation_plan/outputs_folder_2",
             networks_names=["clip_ViT-B-16_LP", "densenet201", "resnet16"],
             combination_sizes= [2, 3],
@@ -59,7 +59,7 @@ class Test_PrepCompPlan(unittest.TestCase):
         assert(pwc_comparison.shape == (0, 0))
     
     def test_empty_folder_cal_plan(self):
-        pwc_plan, cal_plan, pwc_metric, cal_metric = prepare_computation_plan(
+        pwc_plan, cal_plan = prepare_computation_plan(
             outputs_folder="./unit_tests/computation_plan/outputs_folder_2",
             networks_names=["clip_ViT-B-16_LP", "densenet201", "resnet16"],
             combination_sizes= [2, 3],
@@ -92,7 +92,7 @@ class Test_PrepCompPlan(unittest.TestCase):
         assert(cal_comparison.shape == (0, 0))
 
     def test_existing_models_folder_pwc_plan(self):
-        pwc_plan, cal_plan, pwc_metric, cal_metric = prepare_computation_plan(
+        pwc_plan, cal_plan = prepare_computation_plan(
             outputs_folder="./unit_tests/computation_plan/outputs_folder_1",
             networks_names=["clip_ViT-B-16_LP", "densenet201", "resnet16"],
             combination_sizes= [2, 3],
@@ -105,18 +105,18 @@ class Test_PrepCompPlan(unittest.TestCase):
             loading_existing_models="lazy"
         )
         
-        pwc_data = [[True, True, True, 1, 'logreg', 'bc', 5, 'float', "resnet16+clip_ViT-B-16_LP+densenet201_model_co_m_logreg_prec_float"],
-                    [True, True, True, 1, 'logreg', 'bc', 10, 'float', "resnet16+clip_ViT-B-16_LP+densenet201_model_co_m_logreg_prec_float"],
-                    [True, True, True, 1, 'logreg', 'bc', -1, 'float', "resnet16+clip_ViT-B-16_LP+densenet201_model_co_m_logreg_prec_float"],
-                    [True, True, True, 1, 'logreg', 'm1', 5, 'float', "resnet16+clip_ViT-B-16_LP+densenet201_model_co_m_logreg_prec_float"],
-                    [True, True, True, 1, 'logreg', 'm1', 10, 'float', "resnet16+clip_ViT-B-16_LP+densenet201_model_co_m_logreg_prec_float"],
-                    [True, True, True, 1, 'logreg', 'm1', -1, 'float', "resnet16+clip_ViT-B-16_LP+densenet201_model_co_m_logreg_prec_float"],
-                    [True, False, True, 2, 'logreg', 'bc', 5, 'float', "resnet16+clip_ViT-B-16_LP_model_co_m_logreg_prec_float"],
-                    [True, False, True, 2, 'logreg', 'bc', 10, 'float', "resnet16+clip_ViT-B-16_LP_model_co_m_logreg_prec_float"],
-                    [True, False, True, 2, 'logreg', 'bc', -1, 'float', "resnet16+clip_ViT-B-16_LP_model_co_m_logreg_prec_float"],
-                    [True, False, True, 2, 'logreg', 'm1', 5, 'float', "resnet16+clip_ViT-B-16_LP_model_co_m_logreg_prec_float"],
-                    [True, False, True, 2, 'logreg', 'm1', 10, 'float', "resnet16+clip_ViT-B-16_LP_model_co_m_logreg_prec_float"],
-                    [True, False, True, 2, 'logreg', 'm1', -1, 'float', "resnet16+clip_ViT-B-16_LP_model_co_m_logreg_prec_float"],
+        pwc_data = [[True, True, True, 1, 'logreg', 'bc', 5, 'float', "resnet16+clip_ViT-B-16_LP+densenet201_model_co_logreg_prec_float"],
+                    [True, True, True, 1, 'logreg', 'bc', 10, 'float', "resnet16+clip_ViT-B-16_LP+densenet201_model_co_logreg_prec_float"],
+                    [True, True, True, 1, 'logreg', 'bc', -1, 'float', "resnet16+clip_ViT-B-16_LP+densenet201_model_co_logreg_prec_float"],
+                    [True, True, True, 1, 'logreg', 'm1', 5, 'float', "resnet16+clip_ViT-B-16_LP+densenet201_model_co_logreg_prec_float"],
+                    [True, True, True, 1, 'logreg', 'm1', 10, 'float', "resnet16+clip_ViT-B-16_LP+densenet201_model_co_logreg_prec_float"],
+                    [True, True, True, 1, 'logreg', 'm1', -1, 'float', "resnet16+clip_ViT-B-16_LP+densenet201_model_co_logreg_prec_float"],
+                    [True, False, True, 2, 'logreg', 'bc', 5, 'float', "resnet16+clip_ViT-B-16_LP_model_co_logreg_prec_float"],
+                    [True, False, True, 2, 'logreg', 'bc', 10, 'float', "resnet16+clip_ViT-B-16_LP_model_co_logreg_prec_float"],
+                    [True, False, True, 2, 'logreg', 'bc', -1, 'float', "resnet16+clip_ViT-B-16_LP_model_co_logreg_prec_float"],
+                    [True, False, True, 2, 'logreg', 'm1', 5, 'float', "resnet16+clip_ViT-B-16_LP_model_co_logreg_prec_float"],
+                    [True, False, True, 2, 'logreg', 'm1', 10, 'float', "resnet16+clip_ViT-B-16_LP_model_co_logreg_prec_float"],
+                    [True, False, True, 2, 'logreg', 'm1', -1, 'float', "resnet16+clip_ViT-B-16_LP_model_co_logreg_prec_float"],
                     [True, True, False, 3, 'logreg', 'bc', 5, 'float', np.nan],
                     [True, True, False, 3, 'logreg', 'bc', 10, 'float', np.nan],
                     [True, True, False, 3, 'logreg', 'bc', -1, 'float', np.nan],
@@ -146,7 +146,7 @@ class Test_PrepCompPlan(unittest.TestCase):
         assert(pwc_comparison.shape == (0, 0))
     
     def test_existing_models_folder_cal_plan(self):
-        pwc_plan, cal_plan, pwc_metric, cal_metric = prepare_computation_plan(
+        pwc_plan, cal_plan = prepare_computation_plan(
             outputs_folder="./unit_tests/computation_plan/outputs_folder_1",
             networks_names=["clip_ViT-B-16_LP", "densenet201", "resnet16"],
             combination_sizes= [2, 3],
@@ -162,7 +162,7 @@ class Test_PrepCompPlan(unittest.TestCase):
         cal_data = [[True, True, True, 1, 'TemperatureScaling', 'float', np.nan],
                     [True, False, True, 2, 'TemperatureScaling', 'float', np.nan],
                     [True, True, False, 3, 'TemperatureScaling', 'float', np.nan],
-                    [False, True, True, 4, 'TemperatureScaling', 'float', "densenet201+resnet16_model_cal_m_TemperatureScaling_prec_float"]]
+                    [False, True, True, 4, 'TemperatureScaling', 'float', "densenet201+resnet16_model_cal_TemperatureScaling_prec_float"]]
         cal_columns = ['clip_ViT-B-16_LP', 'densenet201', 'resnet16', 'combination_id',
                        'calibrating_method', 'computational_precision', 'model_file']
         
@@ -179,7 +179,7 @@ class Test_PrepCompPlan(unittest.TestCase):
         assert(cal_comparison.shape == (0, 0))
  
     def test_existing_models_existing_metrics_folder_pwc_plan(self):
-        pwc_plan, cal_plan, pwc_metric, cal_metric = prepare_computation_plan(
+        pwc_plan, cal_plan = prepare_computation_plan(
             outputs_folder="./unit_tests/computation_plan/outputs_folder_3",
             networks_names=["clip_ViT-B-16_LP", "densenet201", "resnet16"],
             combination_sizes= [2, 3],
@@ -192,22 +192,22 @@ class Test_PrepCompPlan(unittest.TestCase):
             loading_existing_models="lazy"
         )
         
-        pwc_data = [[True, True, True, 1, 'logreg', 'bc', 5, 'float', "resnet16+clip_ViT-B-16_LP+densenet201_model_co_m_logreg_prec_float"],
-                    [True, True, True, 1, 'logreg', 'bc', 10, 'float', "resnet16+clip_ViT-B-16_LP+densenet201_model_co_m_logreg_prec_float"],
-                    [True, True, True, 1, 'logreg', 'bc', -1, 'float', "resnet16+clip_ViT-B-16_LP+densenet201_model_co_m_logreg_prec_float"],
-                    [True, True, True, 1, 'logreg', 'm1', 5, 'float', "resnet16+clip_ViT-B-16_LP+densenet201_model_co_m_logreg_prec_float"],
-                    [True, True, True, 1, 'logreg', 'm1', 10, 'float', "resnet16+clip_ViT-B-16_LP+densenet201_model_co_m_logreg_prec_float"],
-                    [True, True, True, 1, 'logreg', 'm1', -1, 'float', "resnet16+clip_ViT-B-16_LP+densenet201_model_co_m_logreg_prec_float"],
-                    [True, False, True, 2, 'logreg', 'bc', 5, 'float', "resnet16+clip_ViT-B-16_LP_model_co_m_logreg_prec_float"],
-                    [True, False, True, 2, 'logreg', 'bc', 10, 'float', "resnet16+clip_ViT-B-16_LP_model_co_m_logreg_prec_float"],
-                    [True, False, True, 2, 'logreg', 'bc', -1, 'float', "resnet16+clip_ViT-B-16_LP_model_co_m_logreg_prec_float"],
-                    [True, False, True, 2, 'logreg', 'm1', 5, 'float', "resnet16+clip_ViT-B-16_LP_model_co_m_logreg_prec_float"],
-                    [True, False, True, 2, 'logreg', 'm1', 10, 'float', "resnet16+clip_ViT-B-16_LP_model_co_m_logreg_prec_float"],
-                    [True, False, True, 2, 'logreg', 'm1', -1, 'float', "resnet16+clip_ViT-B-16_LP_model_co_m_logreg_prec_float"],
-                    [True, True, False, 3, 'logreg', 'bc', 5, 'float', "densenet201+clip_ViT-B-16_LP_model_co_m_logreg_prec_float"],
-                    [True, True, False, 3, 'logreg', 'bc', 10, 'float', "densenet201+clip_ViT-B-16_LP_model_co_m_logreg_prec_float"],
-                    [True, True, False, 3, 'logreg', 'm1', 5, 'float', "densenet201+clip_ViT-B-16_LP_model_co_m_logreg_prec_float"],
-                    [True, True, False, 3, 'logreg', 'm1', 10, 'float', "densenet201+clip_ViT-B-16_LP_model_co_m_logreg_prec_float"],
+        pwc_data = [[True, True, True, 1, 'logreg', 'bc', 5, 'float', "resnet16+clip_ViT-B-16_LP+densenet201_model_co_logreg_prec_float"],
+                    [True, True, True, 1, 'logreg', 'bc', 10, 'float', "resnet16+clip_ViT-B-16_LP+densenet201_model_co_logreg_prec_float"],
+                    [True, True, True, 1, 'logreg', 'bc', -1, 'float', "resnet16+clip_ViT-B-16_LP+densenet201_model_co_logreg_prec_float"],
+                    [True, True, True, 1, 'logreg', 'm1', 5, 'float', "resnet16+clip_ViT-B-16_LP+densenet201_model_co_logreg_prec_float"],
+                    [True, True, True, 1, 'logreg', 'm1', 10, 'float', "resnet16+clip_ViT-B-16_LP+densenet201_model_co_logreg_prec_float"],
+                    [True, True, True, 1, 'logreg', 'm1', -1, 'float', "resnet16+clip_ViT-B-16_LP+densenet201_model_co_logreg_prec_float"],
+                    [True, False, True, 2, 'logreg', 'bc', 5, 'float', "resnet16+clip_ViT-B-16_LP_model_co_logreg_prec_float"],
+                    [True, False, True, 2, 'logreg', 'bc', 10, 'float', "resnet16+clip_ViT-B-16_LP_model_co_logreg_prec_float"],
+                    [True, False, True, 2, 'logreg', 'bc', -1, 'float', "resnet16+clip_ViT-B-16_LP_model_co_logreg_prec_float"],
+                    [True, False, True, 2, 'logreg', 'm1', 5, 'float', "resnet16+clip_ViT-B-16_LP_model_co_logreg_prec_float"],
+                    [True, False, True, 2, 'logreg', 'm1', 10, 'float', "resnet16+clip_ViT-B-16_LP_model_co_logreg_prec_float"],
+                    [True, False, True, 2, 'logreg', 'm1', -1, 'float', "resnet16+clip_ViT-B-16_LP_model_co_logreg_prec_float"],
+                    [True, True, False, 3, 'logreg', 'bc', 5, 'float', "densenet201+clip_ViT-B-16_LP_model_co_logreg_prec_float"],
+                    [True, True, False, 3, 'logreg', 'bc', 10, 'float', "densenet201+clip_ViT-B-16_LP_model_co_logreg_prec_float"],
+                    [True, True, False, 3, 'logreg', 'm1', 5, 'float', "densenet201+clip_ViT-B-16_LP_model_co_logreg_prec_float"],
+                    [True, True, False, 3, 'logreg', 'm1', 10, 'float', "densenet201+clip_ViT-B-16_LP_model_co_logreg_prec_float"],
                     [False, True, True, 4, 'logreg', 'bc', 5, 'float', np.nan],
                     [False, True, True, 4, 'logreg', 'bc', 10, 'float', np.nan],
                     [False, True, True, 4, 'logreg', 'bc', -1, 'float', np.nan],
@@ -231,7 +231,7 @@ class Test_PrepCompPlan(unittest.TestCase):
         assert(pwc_comparison.shape == (0, 0))
     
     def test_existing_models_existing_metrics_folder_cal_plan(self):
-        pwc_plan, cal_plan, pwc_metric, cal_metric = prepare_computation_plan(
+        pwc_plan, cal_plan = prepare_computation_plan(
             outputs_folder="./unit_tests/computation_plan/outputs_folder_3",
             networks_names=["clip_ViT-B-16_LP", "densenet201", "resnet16"],
             combination_sizes= [2, 3],
@@ -246,7 +246,7 @@ class Test_PrepCompPlan(unittest.TestCase):
         
         cal_data = [[True, True, True, 1, 'TemperatureScaling', 'float', np.nan],
                     [True, False, True, 2, 'TemperatureScaling', 'float', np.nan],
-                    [False, True, True, 4, 'TemperatureScaling', 'float', "densenet201+resnet16_model_cal_m_TemperatureScaling_prec_float"]]
+                    [False, True, True, 4, 'TemperatureScaling', 'float', "densenet201+resnet16_model_cal_TemperatureScaling_prec_float"]]
         cal_columns = ['clip_ViT-B-16_LP', 'densenet201', 'resnet16', 'combination_id',
                        'calibrating_method', 'computational_precision', 'model_file']
         
@@ -263,7 +263,7 @@ class Test_PrepCompPlan(unittest.TestCase):
         assert(cal_comparison.shape == (0, 0))
  
     def test_existing_models_existing_metrics_folder_specified_combinations_pwc_plan(self):
-        pwc_plan, cal_plan, pwc_metric, cal_metric = prepare_computation_plan(
+        pwc_plan, cal_plan = prepare_computation_plan(
             outputs_folder="./unit_tests/computation_plan/outputs_folder_3",
             networks_names=["clip_ViT-B-16_LP", "densenet201", "resnet16"],
             combination_sizes= [3],
@@ -276,12 +276,12 @@ class Test_PrepCompPlan(unittest.TestCase):
             loading_existing_models="lazy"
         )
         
-        pwc_data = [[True, True, True, 1, 'logreg', 'bc', 5, 'float', "resnet16+clip_ViT-B-16_LP+densenet201_model_co_m_logreg_prec_float"],
-                    [True, True, True, 1, 'logreg', 'bc', 10, 'float', "resnet16+clip_ViT-B-16_LP+densenet201_model_co_m_logreg_prec_float"],
-                    [True, True, True, 1, 'logreg', 'bc', -1, 'float', "resnet16+clip_ViT-B-16_LP+densenet201_model_co_m_logreg_prec_float"],
-                    [True, True, True, 1, 'logreg', 'm1', 5, 'float', "resnet16+clip_ViT-B-16_LP+densenet201_model_co_m_logreg_prec_float"],
-                    [True, True, True, 1, 'logreg', 'm1', 10, 'float', "resnet16+clip_ViT-B-16_LP+densenet201_model_co_m_logreg_prec_float"],
-                    [True, True, True, 1, 'logreg', 'm1', -1, 'float', "resnet16+clip_ViT-B-16_LP+densenet201_model_co_m_logreg_prec_float"],
+        pwc_data = [[True, True, True, 1, 'logreg', 'bc', 5, 'float', "resnet16+clip_ViT-B-16_LP+densenet201_model_co_logreg_prec_float"],
+                    [True, True, True, 1, 'logreg', 'bc', 10, 'float', "resnet16+clip_ViT-B-16_LP+densenet201_model_co_logreg_prec_float"],
+                    [True, True, True, 1, 'logreg', 'bc', -1, 'float', "resnet16+clip_ViT-B-16_LP+densenet201_model_co_logreg_prec_float"],
+                    [True, True, True, 1, 'logreg', 'm1', 5, 'float', "resnet16+clip_ViT-B-16_LP+densenet201_model_co_logreg_prec_float"],
+                    [True, True, True, 1, 'logreg', 'm1', 10, 'float', "resnet16+clip_ViT-B-16_LP+densenet201_model_co_logreg_prec_float"],
+                    [True, True, True, 1, 'logreg', 'm1', -1, 'float', "resnet16+clip_ViT-B-16_LP+densenet201_model_co_logreg_prec_float"],
                     [False, True, True, 4, 'logreg', 'bc', 5, 'float', np.nan],
                     [False, True, True, 4, 'logreg', 'bc', 10, 'float', np.nan],
                     [False, True, True, 4, 'logreg', 'bc', -1, 'float', np.nan],
@@ -305,7 +305,7 @@ class Test_PrepCompPlan(unittest.TestCase):
         assert(pwc_comparison.shape == (0, 0))
     
     def test_existing_models_existing_metrics_folder_specified_combinations_cal_plan(self):
-        pwc_plan, cal_plan, pwc_metric, cal_metric = prepare_computation_plan(
+        pwc_plan, cal_plan = prepare_computation_plan(
             outputs_folder="./unit_tests/computation_plan/outputs_folder_3",
             networks_names=["clip_ViT-B-16_LP", "densenet201", "resnet16"],
             combination_sizes= [3],
@@ -319,7 +319,7 @@ class Test_PrepCompPlan(unittest.TestCase):
         )
         
         cal_data = [[True, True, True, 1, 'TemperatureScaling', 'float', np.nan],
-                    [False, True, True, 4, 'TemperatureScaling', 'float', "densenet201+resnet16_model_cal_m_TemperatureScaling_prec_float"]]
+                    [False, True, True, 4, 'TemperatureScaling', 'float', "densenet201+resnet16_model_cal_TemperatureScaling_prec_float"]]
         cal_columns = ['clip_ViT-B-16_LP', 'densenet201', 'resnet16', 'combination_id',
                        'calibrating_method', 'computational_precision', 'model_file']
         
@@ -336,7 +336,7 @@ class Test_PrepCompPlan(unittest.TestCase):
         assert(cal_comparison.shape == (0, 0))
 
     def test_existing_models_existing_metrics_folder_pwc_metrics(self):
-        pwc_plan, cal_plan, pwc_metric, cal_metric = prepare_computation_plan(
+        pwc_plan, cal_plan = prepare_computation_plan(
             outputs_folder="./unit_tests/computation_plan/outputs_folder_3",
             networks_names=["clip_ViT-B-16_LP", "densenet201", "resnet16"],
             combination_sizes= [2, 3],
@@ -364,7 +364,7 @@ class Test_PrepCompPlan(unittest.TestCase):
                     ["grad_m2",		"m1",0.80566,0.7480303645133972,0.026364009827375412,True,True,	False,2,1,0.18435999751091003,0.663,0.0002651164832059294],
                     ["grad_m2",		"m2",0.80566,0.7455103993415833,0.027345161885023117,True,True,	False,2,1,0.18435999751091003,0.663,0.0002651164832059294],
                     ["grad_m2",		"bc",0.80492,1.4517050981521606,0.4821453094482422,True,True,	False,2,1,0.18435999751091003,0.663,0.0002651164832059294]]
-        pwc_columns = ["combining_method", "coupling_method", "accuracy", "nll",
+        pwc_columns = ["combining_method", "coupling_method", "accuracy1", "nll",
                        "ece", "densenet201", "clip_ViT-B-16_LP", "resnet16",
                        "combination_size", "combination_id", "err_incons",
                        "all_cor", "mean_pwa_var"]
@@ -374,7 +374,7 @@ class Test_PrepCompPlan(unittest.TestCase):
                              "combination_size"]
         
         exp_pwc_metrics = pd.DataFrame(data=pwc_data, columns=pwc_columns)
-        ret_pwc_metrics = pwc_metric
+        ret_pwc_metrics = pwc_plan.metrics_
         
         compared_columns = list(exp_pwc_metrics.columns)
         compared_columns.remove("combination_id")
@@ -392,7 +392,7 @@ class Test_PrepCompPlan(unittest.TestCase):
         assert(pwc_comp_differences + pwc_float_comp_differences == 0)
     
     def test_existing_models_existing_metrics_folder_cal_metrics(self):
-        pwc_plan, cal_plan, pwc_metric, cal_metric = prepare_computation_plan(
+        pwc_plan, cal_plan = prepare_computation_plan(
             outputs_folder="./unit_tests/computation_plan/outputs_folder_3",
             networks_names=["clip_ViT-B-16_LP", "densenet201", "resnet16"],
             combination_sizes= [2, 3],
@@ -407,7 +407,7 @@ class Test_PrepCompPlan(unittest.TestCase):
         
         cal_data = [["TemperatureScaling",0.79772,0.7975190877914429,0.12244042009115219,True,True,False,2,1,0.18435999751091003,0.663,0.0002651164832059294]]
         cal_columns = ["calibrating_method",
-                       "accuracy", "nll", "ece",
+                       "accuracy1", "nll", "ece",
                        "densenet201", "clip_ViT-B-16_LP", "resnet16",
                        "combination_size", "combination_id", 
                        "err_incons", "all_cor", "mean_pwa_var"]
@@ -417,7 +417,7 @@ class Test_PrepCompPlan(unittest.TestCase):
                              "combination_size"]
         
         exp_cal_metrics = pd.DataFrame(data=cal_data, columns=cal_columns)
-        ret_cal_metrics = cal_metric
+        ret_cal_metrics = cal_plan.metrics_
         
         compared_columns = list(exp_cal_metrics.columns)
         compared_columns.remove("combination_id")
@@ -435,7 +435,7 @@ class Test_PrepCompPlan(unittest.TestCase):
         assert(cal_comp_differences + cal_float_comp_differences == 0)
 
     def test_existing_models_existing_metrics_folder_empty_plans(self):
-            pwc_plan, cal_plan, pwc_metric, cal_metric = prepare_computation_plan(
+            pwc_plan, cal_plan = prepare_computation_plan(
                 outputs_folder="./unit_tests/computation_plan/outputs_folder_3",
                 networks_names=["clip_ViT-B-16_LP", "densenet201", "resnet16"],
                 combination_sizes= [2, 3],
