@@ -18,4 +18,4 @@ def test_mem(net_outputs=r'D:\skola\1\weighted_ensembles\tests\test_IM2012_2022\
     wle = WeightedLinearEnsemble(c=c, k=k, device=device)
     print_memory_statistics()
     print("Training ensemble")
-    wle.fit(MP=net_outputs["val_outputs"], tar=net_outputs["val_labels"], combining_method="logreg_torch", verbose=4)
+    wle.fit(preds=net_outputs["val_outputs"], labels=net_outputs["val_labels"], combining_method="logreg_torch", verbose=4)

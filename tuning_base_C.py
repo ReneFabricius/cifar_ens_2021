@@ -10,7 +10,7 @@ import torch
 from weensembles.CalibrationMethod import TemperatureScaling
 from weensembles.predictions_evaluation import compute_error_inconsistency
 from utils.utils import load_networks_outputs, evaluate_ens, evaluate_networks, linear_pw_ens_train_save, calibrating_ens_train_save, pairwise_accuracies_mat, average_variance
-from ensemble_evaluation import ens_evaluation
+from ensemble_evaluation_old import ens_evaluation
 
 
 def global_sweep_C():

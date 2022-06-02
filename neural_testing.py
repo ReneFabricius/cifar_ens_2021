@@ -48,7 +48,7 @@ def test_neural():
     for pars in product(lrs, mmts, bszs, epochs, args.coupling_methods):
         start = timer()
         ens = WeightedLinearEnsemble(c=c, k=k, device=args.device)
-        ens.fit(MP=None, tar=None, MP_val=net_outputs["val_outputs"], tar_val=net_outputs["val_labels"], verbose=args.verbose,
+        ens.fit(preds=None, labels=None, val_preds=net_outputs["val_outputs"], val_labels=net_outputs["val_labels"], verbose=args.verbose,
                 combining_method="neural_" + pars[4], batch_size=pars[2], epochs=pars[3], lr=pars[0], momentum=pars[1],
                 test_period=10)
         end = timer()

@@ -84,7 +84,8 @@ def prepare_computation_plan(outputs_folder: str,
                              topl_values: List[int],
                              calibrating_methods: List[str],
                              computational_precisions: List[str],
-                             loading_existing_models: Literal["no", "recalculate", "lazy"]
+                             loading_existing_models: Literal["no", "recalculate", "lazy"],
+                             device: str="cpu"
                              )-> Tuple[ComputationPlanPWC, ComputationPlanCAL, pd.DataFrame, pd.DataFrame]:
     """ Creates computation plan for specified experiment. Based on value of loading_existing_models
     checks existing models or metrics and performs only the required computations.
@@ -102,14 +103,14 @@ def prepare_computation_plan(outputs_folder: str,
         loading_existing_models (Literal[&quot;no&quot;, &quot;recalculate&quot;, &quot;lazy&quot;]): If no is selected,
         all computations are planned to be performed again. If recalculate is selected, existing models are planned to be 
         loaded and results to be recalculated. If lazy is selected only necesarry computations are planned to be performed.
+        device (str): Device to perform computations on. Defaults to "cpu".
 
     Raises:
         RuntimeError: In existing metrics contain inconsistent combination ids.
 
     Returns:
-        Tuple[ComputationPlanPWC, ComputationPlanCAL, pd.DataFrame, pd.DataFrame]: First two are computation plans
-        for pairwise ensemble and calibrating ensemble. Another two are modified loaded metrics of pairwise ensemble and
-        calibrating ensemble.
+        Tuple[ComputationPlanPWC, ComputationPlanCAL]: Returned are computation plans
+        for pairwise ensemble and calibrating ensemble.
     """
     
     
@@ -183,7 +184,7 @@ def prepare_computation_plan(outputs_folder: str,
             
             existing_combs = pd.concat([cal_combs, pwc_combs]).drop_duplicates()
         else:
-            if cal_combs is not None:
+            if cal_metrics is not None:
                 existing_combs = cal_combs
             else:
                 existing_combs = pwc_combs
@@ -205,10 +206,14 @@ def prepare_computation_plan(outputs_folder: str,
             pwc_metrics["computational_precision"] = "float"
         if "topl" not in pwc_metrics.columns:
             pwc_metrics["topl"] = -1
+        if "accuracy" in pwc_metrics.columns:
+            pwc_metrics.rename(columns={"accuracy": "accuracy1"}, inplace=True)
 
     if cal_metrics is not None:
         if "computational_precision" not in cal_metrics.columns:
             cal_metrics["computational_precision"] = "float"
+        if "accuracy" in cal_metrics.columns:
+            cal_metrics.rename(columns={"accuracy": "accuracy1"}, inplace=True)
         
     # Create all configurations of requested hyperparameter values
     pwc_configs = pd.DataFrame(
@@ -226,7 +231,8 @@ def prepare_computation_plan(outputs_folder: str,
         pwc_configs["model_file"] = np.nan
         cal_configs["model_file"] = np.nan
         
-        return ComputationPlanPWC(pwc_configs), ComputationPlanCAL(cal_configs), pd.DataFrame(), pd.DataFrame()
+        return (ComputationPlanPWC(plan=pwc_configs, metrics=pd.DataFrame(), device=device),
+                ComputationPlanCAL(plan=cal_configs, metrics=pd.DataFrame(), device=device))
     
     # If we are lazy, remove all configurations which already have computed metrics
     if loading_existing_models == "lazy":
@@ -239,8 +245,8 @@ def prepare_computation_plan(outputs_folder: str,
             cal_configs = cal_configs_merged[cal_configs_merged["_merge"] == "left_only"][cal_configs.columns]
     
     # Find existing models in outputs folder
-    ex_pwc = re.compile(r"^(?P<nets>.*?)_model_co_m_(?P<comb_m>.*?)_prec_(?P<prec>.*?)$")
-    ex_cal = re.compile(r"^(?P<nets>.*?)_model_cal_m_(?P<cal_m>.*?)_prec_(?P<prec>.*?)$")
+    ex_pwc = re.compile(r"^(?P<nets>.*?)_model_co_(?P<comb_m>.*?)_prec_(?P<prec>.*?)$")
+    ex_cal = re.compile(r"^(?P<nets>.*?)_model_cal_(?P<cal_m>.*?)_prec_(?P<prec>.*?)$")
         
     pwc_models = [mtch for mtch in map(ex_pwc.match, os.listdir(outputs_folder)) if mtch is not None]
     cal_models = [mtch for mtch in map(ex_cal.match, os.listdir(outputs_folder)) if mtch is not None]
@@ -265,8 +271,12 @@ def prepare_computation_plan(outputs_folder: str,
     
     pwc_configs = pwc_configs.merge(existing_pwc_models, how="left", on=networks_names + ["combining_method", "computational_precision"])
     cal_configs = cal_configs.merge(existing_cal_models, how="left", on=networks_names + ["calibrating_method", "computational_precision"])
+    
+    pwc_metrics = pd.DataFrame() if pwc_metrics is None else pwc_metrics
+    cal_metrics = pd.DataFrame() if cal_metrics is None else cal_metrics
 
-    return ComputationPlanPWC(plan=pwc_configs), ComputationPlanCAL(plan=cal_configs), pwc_metrics, cal_metrics
+    return (ComputationPlanPWC(plan=pwc_configs, metrics=pwc_metrics, device=device),
+            ComputationPlanCAL(plan=cal_configs, metrics=cal_metrics, device=device))
     
     
 class LinearPWEnsOutputs:
@@ -343,7 +353,7 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
                              double_precision=False, prefix='', verbose=0,
                              val_predictors=None, val_targets=None,
                              load_existing_models="no", computed_metrics=None, all_networks=None,
-                             save_sweep_C=False, topl_values=[-1]):
+                             save_sweep_C=False):
     """
     Trains LinearWeightedEnsemble using all possible combinations of provided combining_methods and coupling_methods.
     Combines outputs given in test_predictors, saves them and returns them in an instance of LinearPWEnsOutputs.
@@ -427,10 +437,10 @@ def linear_pw_ens_train_save(predictors, targets, test_predictors, device, out_p
         ens = WeightedLinearEnsemble(c=predictors.shape[0], k=predictors.shape[2], device=device, dtp=dtp)
         if load_existing_models == "no" or not model_exists:
             if co_m_fun.req_val_:
-                ens.fit(MP=predictors, tar=targets, verbose=verbose, combining_method=co_m,
-                        MP_val=val_predictors, tar_val=val_targets, save_C=save_C)
+                ens.fit(preds=predictors, labels=targets, verbose=verbose, combining_method=co_m,
+                        val_preds=val_predictors, val_labels=val_targets, save_C=save_C)
             else:
-                ens.fit(MP=predictors, tar=targets, verbose=verbose, combining_method=co_m, save_C=save_C)
+                ens.fit(preds=predictors, labels=targets, verbose=verbose, combining_method=co_m, save_C=save_C)
         else:
             ens.load(model_file)
             model_loaded = True
@@ -513,7 +523,7 @@ def calibrating_ens_train_save(predictors, targets, test_predictors, device, out
         
         ens = CalibrationEnsemble(c=predictors.shape[0], k=predictors.shape[2], device=device, dtp=dtp)
         if load_existing_models == "no" or not model_exists:
-            ens.fit(MP=predictors, tar=targets, calibration_method=cal_m, verbose=verbose)
+            ens.fit(preds=predictors, labels=targets, calibration_method=cal_m, verbose=verbose)
         else:
             ens.load(model_file)
             model_loaded = True
@@ -851,12 +861,13 @@ def evaluate_networks(net_outputs):
     Returns:
         pandas.DataFrame: Data frame containing metrics of networks
     """
-    df_net = pd.DataFrame(columns=("network", "accuracy", "nll", "ece"))
+    df_net = pd.DataFrame(columns=("network", "accuracy1", "accuracy5", "nll", "ece"))
     for i, net in enumerate(net_outputs["networks"]):
-        acc = compute_acc_topk(tar=net_outputs["test_labels"], pred=net_outputs["test_outputs"][i], k=1)
+        acc1 = compute_acc_topk(tar=net_outputs["test_labels"], pred=net_outputs["test_outputs"][i], k=1)
+        acc5 = compute_acc_topk(tar=net_outputs["test_labels"], pred=net_outputs["test_outputs"][i], k=5)
         nll = compute_nll(tar=net_outputs["test_labels"], pred=net_outputs["test_outputs"][i], penultimate=True)
         ece = ECE_sweep(pred=net_outputs["test_outputs"][i], tar=net_outputs["test_labels"], penultimate=True)
-        df_net.loc[i] = [net, acc, nll, ece]
+        df_net.loc[i] = [net, acc1, acc5, nll, ece]
     
     return df_net
 

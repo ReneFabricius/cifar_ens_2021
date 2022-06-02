@@ -62,11 +62,11 @@ def test_grad():
         for cp_m_test in args.coupling_methods:
             print("Testing coupling method {}".format(cp_m_test))
             train_pred = cuda_mem_try(
-                    fun=lambda bsz: wle.predict_proba_topl_fast(MP=net_outputs["val_outputs"], l=k, coupling_method=cp_m_test, coefs=coefs,
+                    fun=lambda bsz: wle.predict_proba(preds=net_outputs["val_outputs"], l=k, coupling_method=cp_m_test, coefs=coefs,
                                                                 verbose=max(args.verbose - 2, 0), batch_size=bsz),
                     start_bsz=net_outputs["val_outputs"].shape[1], verbose=args.verbose, device=args.device)
             test_pred = cuda_mem_try(
-                    fun=lambda bsz: wle.predict_proba_topl_fast(MP=net_outputs["test_outputs"], l=k, coupling_method=cp_m_test, coefs=coefs,
+                    fun=lambda bsz: wle.predict_proba(preds=net_outputs["test_outputs"], l=k, coupling_method=cp_m_test, coefs=coefs,
                                                                 verbose=max(args.verbose - 2, 0), batch_size=bsz),
                     start_bsz=net_outputs["test_outputs"].shape[1], verbose=args.verbose, device=args.device)
             
