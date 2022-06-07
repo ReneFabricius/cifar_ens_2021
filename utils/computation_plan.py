@@ -162,7 +162,7 @@ class ComputationPlanPWC(ComputationPlan):
                 for topl in topl_vals:
                     if verbose > 0:
                         print("Processing topl value {}".format(topl)) 
-                    ens_test_pred = cuda_mem_try(fun=lambda bsz: wle.predict_proba(preds=test_pred,
+                    ens_test_pred, ens_test_unc = cuda_mem_try(fun=lambda bsz: wle.predict_proba(preds=test_pred,
                                                                                    coupling_method=coup_m,
                                                                                    verbose=verbose, l=topl if topl > 0 else k,
                                                                                    batch_size=bsz),

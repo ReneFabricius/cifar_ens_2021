@@ -113,6 +113,10 @@ def prepare_computation_plan(outputs_folder: str,
         for pairwise ensemble and calibrating ensemble.
     """
     
+    combination_fields = ["combination_size", "combination_id", "err_incons", "all_cor", "mean_pwa_var"]
+    configuration_fields = ["calibrating_method", "combining_method", "coupling_method", "accuracy",
+                            "accuracy1", "accuracy5", "nll", "ece", "computational_precision", "topl"]
+    uncert_fields = ["auroc", "aupr"]
     
     # Create all combinations of given networks having specified sizes
     net_combinations = set([frozenset(comb)
@@ -139,27 +143,21 @@ def prepare_computation_plan(outputs_folder: str,
     
     max_combination_id = 0
     if loading_existing_models == "lazy":
-        # Load existing metrics and add an empty column of False for networks 
-        # which are present in networks_names and not present in the existing metrics files
+        # Load existing metrics
         cal_metrics_file = os.path.join(outputs_folder, "ens_cal_metrics.csv")
         pwc_metrics_file = os.path.join(outputs_folder, "ens_pwc_metrics.csv")
+        all_columns = set()
         if os.path.exists(cal_metrics_file):
             cal_metrics = pd.read_csv(cal_metrics_file)
-            if cal_metrics.shape[0] > 0:
-                for net in networks_names:
-                    if net not in cal_metrics.columns:
-                        cal_metrics[net] = False
-            else:
+            all_columns = all_columns.union(set(cal_metrics.columns))
+            if cal_metrics.shape[0] == 0:
                 cal_metrics = None
         else:
             cal_metrics = None
         if os.path.exists(pwc_metrics_file):
             pwc_metrics = pd.read_csv(pwc_metrics_file)
-            if pwc_metrics.shape[0] > 0:
-                for net in networks_names:
-                    if net not in pwc_metrics.columns:
-                        pwc_metrics[net] = False
-            else:
+            all_columns = all_columns.union(pwc_metrics.columns)
+            if pwc_metrics.shape[0] == 0:
                 pwc_metrics = None
         else:
             pwc_metrics = None
@@ -167,17 +165,29 @@ def prepare_computation_plan(outputs_folder: str,
         pwc_metrics = None
         cal_metrics = None
     
+    # Create set of all networks names present in metrics or experiment plan
+    # Add missing networks to computation plan and existing metrics
+    all_networks = all_columns - set(combination_fields) - set(configuration_fields) - set(uncert_fields)
+    all_networks = list(all_networks.union(set(networks_names)))
+    for net_name in all_networks:
+        if net_name not in combinations_df:
+            combinations_df[net_name] = False
+        if cal_metrics is not None and net_name not in cal_metrics:
+            cal_metrics[net_name] = False
+        if pwc_metrics is not None and net_name not in pwc_metrics:
+            pwc_metrics[net_name] = False
+    
     if cal_metrics is not None or pwc_metrics is not None:
         if cal_metrics is not None:
-            cal_combs = cal_metrics[networks_names + ["combination_id"]].copy(deep=True)
+            cal_combs = cal_metrics[all_networks + ["combination_id"]].copy(deep=True)
             cal_combs.drop_duplicates(inplace=True)
         if pwc_metrics is not None:
-            pwc_combs = pwc_metrics[networks_names + ["combination_id"]].copy(deep=True)
+            pwc_combs = pwc_metrics[all_networks + ["combination_id"]].copy(deep=True)
             pwc_combs.drop_duplicates(inplace=True)
         
         if cal_metrics is not None and pwc_metrics is not None:
             # Check if there are some conflicts, ie. different combination_id for the same combination in pwc and cal metrics
-            combined_combs = cal_combs.merge(pwc_combs, on=networks_names, how="inner", suffixes=["l", "r"])
+            combined_combs = cal_combs.merge(pwc_combs, on=all_networks, how="inner", suffixes=["l", "r"])
             conflicts = combined_combs[combined_combs["combination_idl"] != combined_combs["combination_idr"]]
             if conflicts.shape[0] > 0:
                 raise RuntimeError("Conflicting combination_ids in calibrating ens metrics and pairwise ens metrics: {}".format(conflicts))
@@ -190,15 +200,17 @@ def prepare_computation_plan(outputs_folder: str,
                 existing_combs = pwc_combs
             # existing_combs contain combinations with combination_ids in existing metrics
     else:
-        existing_combs = pd.DataFrame(columns=networks_names + ["combination_id"])
+        existing_combs = pd.DataFrame(columns=all_networks + ["combination_id"])
     
-    combinations_df = combinations_df.merge(existing_combs, how="left", on=networks_names)
+    combinations_df = combinations_df.merge(existing_combs, how="left", on=all_networks)
     combinations_df["combination_id"] = combinations_df["combination_id"].astype(pd.Int64Dtype())
     max_combination_id = combinations_df["combination_id"].max()
     max_combination_id = 0 if pd.isna(max_combination_id) else max_combination_id
     num_na_ids = combinations_df["combination_id"].isna().sum()
     # Assign unique combination ids to new combinations
-    combinations_df.loc[combinations_df["combination_id"].isna(), "combination_id"] = range(max_combination_id + 1, max_combination_id + 1 + num_na_ids)
+    combinations_df.loc[combinations_df["combination_id"].isna(), "combination_id"] = range(
+        max_combination_id + 1,
+        max_combination_id + 1 + num_na_ids)
     
     # Add columns possibly missing from previous versions
     if pwc_metrics is not None:
@@ -217,7 +229,8 @@ def prepare_computation_plan(outputs_folder: str,
         
     # Create all configurations of requested hyperparameter values
     pwc_configs = pd.DataFrame(
-        data=list(itertools.product(combinations_df["combination_id"], combining_methods, coupling_methods, topl_values, computational_precisions)),
+        data=list(itertools.product(combinations_df["combination_id"], combining_methods, coupling_methods,
+                                    topl_values, computational_precisions)),
         columns=["combination_id", "combining_method", "coupling_method", "topl", "computational_precision"])
     pwc_configs = combinations_df.merge(pwc_configs, how="right", on=["combination_id"])
     
@@ -254,23 +267,25 @@ def prepare_computation_plan(outputs_folder: str,
     existing_pwc_models = []
     for pwc_model in pwc_models:
         constituents = set(pwc_model["nets"].split('+'))
-        net_mask = [net in constituents for net in networks_names]
-        if sum(net_mask) == len(constituents):  # If all the constituents are present in networks_names
+        net_mask = [net in constituents for net in all_networks]
+        if sum(net_mask) == len(constituents):  # If all the constituents are present in all_networks
             existing_pwc_models.append(net_mask + [pwc_model["comb_m"], pwc_model["prec"], pwc_model.string])
     
-    existing_pwc_models = pd.DataFrame(data=existing_pwc_models, columns=networks_names + ["combining_method", "computational_precision", "model_file"])
+    existing_pwc_models = pd.DataFrame(data=existing_pwc_models,
+                                       columns=all_networks + ["combining_method", "computational_precision", "model_file"])
     
     existing_cal_models = []
     for cal_model in cal_models:
         constituents = set(cal_model["nets"].split('+'))
-        net_mask = [net in constituents for net in networks_names]
-        if sum(net_mask) == len(constituents):  # If all the constituents are present in networks_names
+        net_mask = [net in constituents for net in all_networks]
+        if sum(net_mask) == len(constituents):  # If all the constituents are present in all_networks
             existing_cal_models.append(net_mask + [cal_model["cal_m"], cal_model["prec"], cal_model.string])
         
-    existing_cal_models = pd.DataFrame(data=existing_cal_models, columns=networks_names + ["calibrating_method", "computational_precision", "model_file"])
+    existing_cal_models = pd.DataFrame(data=existing_cal_models,
+                                       columns=all_networks + ["calibrating_method", "computational_precision", "model_file"])
     
-    pwc_configs = pwc_configs.merge(existing_pwc_models, how="left", on=networks_names + ["combining_method", "computational_precision"])
-    cal_configs = cal_configs.merge(existing_cal_models, how="left", on=networks_names + ["calibrating_method", "computational_precision"])
+    pwc_configs = pwc_configs.merge(existing_pwc_models, how="left", on=all_networks + ["combining_method", "computational_precision"])
+    cal_configs = cal_configs.merge(existing_cal_models, how="left", on=all_networks + ["calibrating_method", "computational_precision"])
     
     pwc_metrics = pd.DataFrame() if pwc_metrics is None else pwc_metrics
     cal_metrics = pd.DataFrame() if cal_metrics is None else cal_metrics
