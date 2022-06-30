@@ -6,7 +6,7 @@ import os
 from sklearn.model_selection import train_test_split
 import torch
 
-from weensembles.predictions_evaluation import compute_error_inconsistency, compute_acc_topk, compute_nll, ECE_sweep
+from weensembles.predictions_evaluation import compute_error_inconsistency, compute_acc_topk, compute_nll, ECE_sweep, compute_au_from_scores, compute_au_from_uncerts
 from weensembles.Ensemble import Ensemble
 import utils.utils as ens_utils
 from weensembles.CalibrationEnsemble import CalibrationEnsemble
@@ -18,7 +18,20 @@ from weensembles.utils import cuda_mem_try
 class ComputationPlan(ABC):
     def __init__(self, plan: pd.DataFrame, metrics: pd.DataFrame, metrics_name: str, device: str,
                  model_file_format: str, model_coefs_file_format: str,
-                 model_pred_file_format: str) -> None:
+                 model_pred_file_format: str,
+                 model_ood_file_format: str) -> None:
+        """_summary_
+
+        Args:
+            plan (pd.DataFrame): Computational plan containing constituent networks, combining/calibrating method, computational precision...
+            metrics (pd.DataFrame): Data frame of existing metrics from previous computations.
+            metrics_name (str): Name of the metrics file to be created.
+            device (str): Device to perform calculations on.
+            model_file_format (str): Format of model file names.
+            model_coefs_file_format (str): Format of model coefficients file names.
+            model_pred_file_format (str): Format of model predictions file name.
+            model_ood_file_format (str): Format of model ood predictions file name.
+        """
         self.plan_ = plan
         self.metrics_ = metrics
         self.metrics_name_ = metrics_name
@@ -26,6 +39,7 @@ class ComputationPlan(ABC):
         self.mod_f_form_ = model_file_format
         self.mod_csv_f_form_ = model_coefs_file_format
         self.mod_pred_f_form_ = model_pred_file_format
+        self.mod_ood_f_form_ = model_ood_file_format
     
     def save_metrics(self, outputs_folder: str):
         if self.metrics_ is not None and self.metrics_.shape[0] > 0:
@@ -53,6 +67,7 @@ class ComputationPlan(ABC):
                             err_inc: float, all_cor: float, mean_pwa_var: float,
                             outputs_folder:str, nets_string: str, networks: List[str],
                             combiner_val_pred: torch.tensor=None, combiner_val_labels: torch.tensor=None,
+                            ood_pred: torch.tensor=None,
                             verbose: int=0):
         pass 
                 
@@ -82,6 +97,10 @@ class ComputationPlan(ABC):
             test_lab = net_outputs["test_labels"]
             classes = torch.unique(val_lab)
             n_classes = len(classes)
+            if "ood_outputs" in net_outputs:
+                ood_pred = net_outputs["ood_outputs"][comb_mask]
+            else:
+                ood_pred = None
             
             err_inc, all_cor = compute_error_inconsistency(preds=test_pred, tar=test_lab)
             mean_pwa_var = ens_utils.average_variance(inp=net_pwa[comb_mask])
@@ -111,7 +130,7 @@ class ComputationPlan(ABC):
                                     err_inc=err_inc, all_cor=all_cor, mean_pwa_var=mean_pwa_var,
                                     combiner_val_pred=combiner_val_pred.to(dtype=prec_dtype) if combiner_val_pred is not None else None,
                                     combiner_val_labels=combiner_val_lab, verbose=verbose,
-                                    outputs_folder=outputs_folder)
+                                    outputs_folder=outputs_folder, ood_pred=ood_pred)
   
 
 class ComputationPlanPWC(ComputationPlan):
@@ -120,7 +139,8 @@ class ComputationPlanPWC(ComputationPlan):
                          metrics_name="ens_pwc_metrics.csv",
                          model_file_format="{}_model_co_{}_prec_{}",
                          model_coefs_file_format="{}_csv_coefs_co_{}_prec_{}.csv",
-                         model_pred_file_format="{}_ens_test_outputs_co_{}_cp_{}_prec_{}_topl_{}.npy") 
+                         model_pred_file_format="{}_ens_test_outputs_co_{}_cp_{}_prec_{}_topl_{}.npy",
+                         model_ood_file_format="{}_ens_ood_outputs_co_{}_cp_{}_prec_{}_topl_{}.npy") 
      
     def _process_model(self, comb_id: int, comb_mask: List[bool], comp_precision: str,
                        val_pred: torch.tensor, val_labels: torch.tensor,
@@ -128,8 +148,9 @@ class ComputationPlanPWC(ComputationPlan):
                        err_inc: float, all_cor: float, mean_pwa_var: float,
                        outputs_folder: str, nets_string: str, networks: List[str],
                        combiner_val_pred: torch.tensor=None, combiner_val_labels: torch.tensor=None,
+                       ood_pred: torch.tensor=None,
                        verbose: int=0):
-        
+        processing_ood = ood_pred is not None
         comb_m_names = self.plan_[(self.plan_["combination_id"] == comb_id) &
                                   (self.plan_["computational_precision"] == comp_precision)]["combining_method"].drop_duplicates()
         c, n, k = val_pred.shape if val_pred is not None else test_pred.shape
@@ -162,13 +183,15 @@ class ComputationPlanPWC(ComputationPlan):
                 for topl in topl_vals:
                     if verbose > 0:
                         print("Processing topl value {}".format(topl)) 
-                    ens_test_pred, ens_test_unc = cuda_mem_try(fun=lambda bsz: wle.predict_proba(preds=test_pred,
-                                                                                   coupling_method=coup_m,
-                                                                                   verbose=verbose, l=topl if topl > 0 else k,
-                                                                                   batch_size=bsz),
-                                                 start_bsz=test_pred.shape[1],
-                                                 device=self.dev_,
-                                                 dec_coef=0.8, verbose=verbose)
+                    ens_test_pred, ens_test_unc = cuda_mem_try(
+                        fun=lambda bsz: wle.predict_proba(preds=test_pred,
+                                                          coupling_method=coup_m,
+                                                          verbose=verbose, l=topl if topl > 0 else k,
+                                                          batch_size=bsz,
+                                                          predict_uncertainty=processing_ood),
+                        start_bsz=test_pred.shape[1],
+                        device=self.dev_,
+                        dec_coef=0.8, verbose=verbose)
                     pred_name = self.mod_pred_f_form_.format(nets_string, comb_m, coup_m, comp_precision, topl)
                     np.save(os.path.join(outputs_folder, pred_name), arr=ens_test_pred.detach().cpu().numpy())
                     acc1, acc5, nll, ece = self.compute_metrics(predictions=ens_test_pred, labels=test_labels)
@@ -178,6 +201,24 @@ class ComputationPlanPWC(ComputationPlan):
                     row_cols = networks + ["combination_id", "combination_size", "err_incons", "all_cor", "mean_pwa_var",
                                            "combining_method", "coupling_method", "topl", "computational_precision",
                                            "accuracy1", "accuracy5", "nll", "ece"]
+                    if processing_ood:
+                        ens_ood_pred, ens_ood_unc = cuda_mem_try(
+                            fun=lambda bsz: wle.predict_proba(preds=ood_pred,
+                                                            coupling_method=coup_m,
+                                                            verbose=verbose, l=topl if topl > 0 else k,
+                                                            batch_size=bsz,
+                                                            predict_uncertainty=processing_ood),
+                            start_bsz=test_pred.shape[1],
+                            device=self.dev_,
+                            dec_coef=0.8, verbose=verbose)
+                        ood_name = self.mod_ood_f_form_.format(nets_string, comb_m, coup_m, comp_precision, topl)
+                        np.save(os.path.join(outputs_folder, ood_name), arr=ens_ood_pred.detach().cpu().numpy())
+                        au_postproc_mets = ens_utils.get_postproc_au_mets(id_preds=ens_test_pred, ood_preds=ens_ood_pred)
+                        ood_det_auroc = compute_au_from_uncerts(id_uncerts=ens_test_unc, ood_uncerts=ens_ood_unc, metric="auroc")
+                        ood_det_auprc = compute_au_from_uncerts(id_uncerts=ens_test_unc, ood_uncerts=ens_ood_unc, metric="auprc")
+                        row_data[0] += list(au_postproc_mets) + [ood_det_auroc, ood_det_auprc]
+                        row_cols += ["MSP_AUROC", "MSP_AUPRC", "MLI_AUROC", "MLI_AUPRC", "UNC_AUROC", "UNC_AUPRC"]
+                        
                     row_df = pd.DataFrame(data=row_data, columns=row_cols)
                     self.metrics_ = pd.concat([self.metrics_, row_df])
                     self.save_metrics(outputs_folder=outputs_folder)
@@ -189,7 +230,8 @@ class ComputationPlanCAL(ComputationPlan):
                          metrics_name="ens_cal_metrics.csv",
                          model_file_format="{}_model_cal_{}_prec_{}",
                          model_coefs_file_format="{}_csv_coefs_cal_{}_prec_{}.csv",
-                         model_pred_file_format="{}_ens_test_outputs_cal_{}_prec_{}.npy") 
+                         model_pred_file_format="{}_ens_test_outputs_cal_{}_prec_{}.npy",
+                         model_ood_file_format="{}_ens_ood_outputs_cal_{}_prec_{}.npy") 
  
     def _process_model(self, comb_id: int, comb_mask: List[bool], comp_precision: str,
                        val_pred: torch.tensor, val_labels: torch.tensor,
@@ -197,12 +239,14 @@ class ComputationPlanCAL(ComputationPlan):
                        err_inc: float, all_cor: float, mean_pwa_var: float,
                        outputs_folder: str, nets_string: str, networks: List[str],
                        combiner_val_pred: torch.tensor=None, combiner_val_labels: torch.tensor=None,
+                       ood_pred: torch.tensor=None,
                        verbose: int=0):
         
         cal_m_names = self.plan_[(self.plan_["combination_id"] == comb_id) &
                                   (self.plan_["computational_precision"] == comp_precision)]["calibrating_method"].drop_duplicates()
         c, n, k = val_pred.shape if val_pred is not None else test_pred.shape
         comp_dtype = torch.float32 if comp_precision == "float" else torch.float64
+        processing_ood = ood_pred is not None
         for cal_m in cal_m_names:
             if verbose > 0:
                 print("Processing calibrating method {}".format(cal_m))
@@ -229,6 +273,15 @@ class ComputationPlanCAL(ComputationPlan):
             row_cols = networks + ["combination_id", "combination_size", "err_incons", "all_cor", "mean_pwa_var",
                                     "calibrating_method", "computational_precision",
                                     "accuracy1", "accuracy5", "nll", "ece"]
+            if processing_ood:
+                ens_ood_pred = cale.predict_proba(preds=ood_pred)
+                
+                ood_name = self.mod_ood_f_form_.format(nets_string, cal_m, comp_precision)
+                np.save(os.path.join(outputs_folder, ood_name), arr=ens_ood_pred.detach().cpu().numpy())
+                au_postproc_mets = ens_utils.get_postproc_au_mets(id_preds=ens_test_pred, ood_preds=ens_ood_pred)
+                row_data[0] += list(au_postproc_mets)
+                row_cols += ["MSP_AUROC", "MSP_AUPRC", "MLI_AUROC", "MLI_AUPRC"]
+            
             row_df = pd.DataFrame(data=row_data, columns=row_cols)
             self.metrics_ = pd.concat([self.metrics_, row_df])
             self.save_metrics(outputs_folder=outputs_folder)

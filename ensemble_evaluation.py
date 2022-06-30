@@ -29,8 +29,9 @@ def ens_evaluation(args_dict=None):
         parser.add_argument('-comp_precisions', nargs='+', default=["float"], help="Precisions which to test for the computations (float and/or double)")
         parser.add_argument('-output_folder', type=str, help="Path to a folder to save the outputs to.")
         parser.add_argument('-topl', nargs="+", default=[-1], type=int, help="Topl values to test")
-        parser.set_defaults(compute_pwm=False)
-        parser.set_defaults(save_sweep_C=False)
+        parser.add_argument('-process_ood', dest="process_ood", action="store_true",
+                            help="Enables processing of ood samples. If specified, all the networks are expected to contain ood outputs.")
+        parser.set_defaults(compute_pwm=False, save_sweep_C=False, process_ood=False)
         args = parser.parse_args()
     else:
         args = args_dict
@@ -45,7 +46,8 @@ def ens_evaluation(args_dict=None):
                                         experiment_out_path=args.output_folder,
                                         device=args.device,
                                         dtype=torch.float64 if "double" in args.comp_precisions else torch.float32,
-                                        load_train_data=req_val_data)
+                                        load_train_data=req_val_data,
+                                        load_ood_data=args.process_ood)
     
     comp_plan_pwc, comp_plan_cal = prepare_computation_plan(outputs_folder=args.output_folder,
                                                             networks_names=net_outputs["networks"],

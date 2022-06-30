@@ -12,12 +12,13 @@ from typing import List, Tuple
 from typing_extensions import Literal
 
 from weensembles.WeightedLinearEnsemble import WeightedLinearEnsemble
-from weensembles.predictions_evaluation import ECE_sweep, compute_acc_topk, compute_nll
+from weensembles.predictions_evaluation import ECE_sweep, compute_acc_topk, compute_nll, compute_au_from_scores
 from weensembles.CalibrationEnsemble import CalibrationEnsemble
 from weensembles.CombiningMethods import comb_picker
 from weensembles.utils import cuda_mem_try
 from weensembles.CouplingMethods import coup_picker
 from utils.computation_plan import ComputationPlanCAL, ComputationPlanPWC
+from weensembles.OODDetectors import MaximumLogit, MaximumSoftmaxProbability
 
 
 def load_npy_arr(file, device, dtype):
@@ -26,7 +27,7 @@ def load_npy_arr(file, device, dtype):
     return arr
 
 
-def load_networks_outputs(nn_outputs_path, experiment_out_path=None, device='cpu', dtype=torch.float, load_train_data=True):
+def load_networks_outputs(nn_outputs_path, experiment_out_path=None, device='cpu', dtype=torch.float, load_train_data=True, load_ood_data=False):
     """
     Loads network outputs for single replication. Dimensions in the output tensors are network, sample, class.
     :param nn_outputs_path: replication outputs path.
@@ -58,6 +59,13 @@ def load_networks_outputs(nn_outputs_path, experiment_out_path=None, device='cpu
                                 unsqueeze(0))
         train_outputs = torch.cat(train_outputs, 0)
         train_labels = load_npy_arr(os.path.join(nn_outputs_path, networks[0], 'train_labels.npy'), device=device, dtype=torch.long)
+        
+    if load_ood_data:
+        ood_outputs = []
+        for net in networks:
+            ood_outputs.append(load_npy_arr(os.path.join(nn_outputs_path, net, 'ood_outputs.npy'), device=device, dtype=dtype).unsqueeze(0))
+        ood_outputs = torch.cat(ood_outputs, 0)
+        ood_labels = load_npy_arr(os.path.join(nn_outputs_path, networks[0], 'ood_labels.npy'), device=device, dtype=torch.long)
 
     val_outputs = []
     for net in networks:
@@ -72,6 +80,10 @@ def load_networks_outputs(nn_outputs_path, experiment_out_path=None, device='cpu
     if load_train_data:
         ret["train_outputs"] = train_outputs
         ret["train_labels"] = train_labels
+    
+    if load_ood_data:
+        ret["ood_outputs"] = ood_outputs
+        ret["ood_labels"] = ood_labels
     
     return ret
 
@@ -142,11 +154,11 @@ def prepare_computation_plan(outputs_folder: str,
                                    columns=networks_names)
     
     max_combination_id = 0
+    all_columns = set()
     if loading_existing_models == "lazy":
         # Load existing metrics
         cal_metrics_file = os.path.join(outputs_folder, "ens_cal_metrics.csv")
         pwc_metrics_file = os.path.join(outputs_folder, "ens_pwc_metrics.csv")
-        all_columns = set()
         if os.path.exists(cal_metrics_file):
             cal_metrics = pd.read_csv(cal_metrics_file)
             all_columns = all_columns.union(set(cal_metrics.columns))
@@ -866,6 +878,62 @@ def compute_calibration_plot(prob_pred, labs, bin_n=10, softmax=False):
                 
     return df
 
+def create_ood_labs_preds(id_preds: torch.tensor, ood_preds: torch.tensor, method: str) -> Tuple[torch.tensor, torch.tensor]:
+    """Builds ood scores and labels using the specified ood postprocessing method. Scores closer to one represent higher ood conviction.
+
+    Args:
+        id_preds (torch.tensor): Logits of in-distribution samples.
+        ood_preds (torch.tensor): Logits of out-of-distribution samples.
+        method (str): OOD method to use: msp for maximum softmax probability,
+        mli for maximum logit.
+
+    Raises:
+        ValueError: In case of unsupported method.
+
+    Returns:
+        torch.tensor, torch.tensor: labels and ood scores.
+    """
+    if method.lower() == "msp":
+        met = MaximumSoftmaxProbability()
+    elif method.lower() == "mli":
+        met = MaximumLogit()
+    else:
+        raise ValueError("Unsupported ood postprocessing method: {}".format(method))
+    
+    dev = id_preds.device
+
+    id_scores = met.get_scores(id_preds)
+    ood_scores = met.get_scores(ood_preds)
+    scores = torch.cat([id_scores, ood_scores])
+    labels = torch.cat([torch.zeros(size=(len(id_scores),), dtype=torch.long, device=dev),
+                        torch.ones(size=(len(ood_scores),), dtype=torch.long, device=dev)])
+    
+    return labels, scores
+
+def get_postproc_au_mets(id_preds: torch.tensor, ood_preds: torch.tensor) -> Tuple[float, float, float, float]:
+    """Computes AUROC and AUPRC metrics for postprocessing methods msp and mli.
+
+    Args:
+        id_preds (_type_): In distribution logits.
+        ood_preds (_type_): Out of distribution logits.
+
+
+    Returns:
+        tuple(float, float, float, float): msp_AUROC, msp_AUPRC, mli_AUROC, mli_AUPRC
+    """
+    msp_labs, msp_scores = create_ood_labs_preds(id_preds=id_preds,
+                                                    ood_preds=ood_preds,
+                                                    method="msp")
+    msp_AUROC = compute_au_from_scores(scores=msp_scores, labels=msp_labs, metric="auroc")
+    msp_AUPRC = compute_au_from_scores(scores=msp_scores, labels=msp_labs, metric="auprc")
+    mli_labs, mli_scores = create_ood_labs_preds(id_preds=id_preds,
+                                                    ood_preds=ood_preds,
+                                                    method="mli")
+    mli_AUROC = compute_au_from_scores(scores=mli_scores, labels=mli_labs, metric="auroc")
+    mli_AUPRC = compute_au_from_scores(scores=mli_scores, labels=mli_labs, metric="auprc")
+
+    return msp_AUROC, msp_AUPRC, mli_AUROC, mli_AUPRC
+
     
 def evaluate_networks(net_outputs):
     """
@@ -876,13 +944,21 @@ def evaluate_networks(net_outputs):
     Returns:
         pandas.DataFrame: Data frame containing metrics of networks
     """
-    df_net = pd.DataFrame(columns=("network", "accuracy1", "accuracy5", "nll", "ece"))
+    cols = ["network", "accuracy1", "accuracy5", "nll", "ece"]
+    if "ood_outputs" in net_outputs:
+        cols += ["MSP_AUROC", "MSP_AUPRC", "MLI_AUROC", "MLI_AUPRC"]
+    
+    df_net = pd.DataFrame(columns=cols)
     for i, net in enumerate(net_outputs["networks"]):
         acc1 = compute_acc_topk(tar=net_outputs["test_labels"], pred=net_outputs["test_outputs"][i], k=1)
         acc5 = compute_acc_topk(tar=net_outputs["test_labels"], pred=net_outputs["test_outputs"][i], k=5)
         nll = compute_nll(tar=net_outputs["test_labels"], pred=net_outputs["test_outputs"][i], penultimate=True)
         ece = ECE_sweep(pred=net_outputs["test_outputs"][i], tar=net_outputs["test_labels"], penultimate=True)
-        df_net.loc[i] = [net, acc1, acc5, nll, ece]
+        if "ood_outputs" in net_outputs:
+            au_mets = get_postproc_au_mets(id_preds=net_outputs["test_outputs"][i], ood_preds=net_outputs["ood_outputs"][i])
+            df_net.loc[i] = [net, acc1, acc5, nll, ece] + list(au_mets)
+        else:
+            df_net.loc[i] = [net, acc1, acc5, nll, ece]
     
     return df_net
 
