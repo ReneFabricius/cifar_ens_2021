@@ -19,7 +19,9 @@ class ComputationPlan(ABC):
     def __init__(self, plan: pd.DataFrame, metrics: pd.DataFrame, metrics_name: str, device: str,
                  model_file_format: str, model_coefs_file_format: str,
                  model_pred_file_format: str,
-                 model_ood_file_format: str) -> None:
+                 model_ood_file_format: str,
+                 model_test_unc_file_format: str=None,
+                 model_ood_unc_file_format: str=None) -> None:
         """_summary_
 
         Args:
@@ -40,6 +42,8 @@ class ComputationPlan(ABC):
         self.mod_csv_f_form_ = model_coefs_file_format
         self.mod_pred_f_form_ = model_pred_file_format
         self.mod_ood_f_form_ = model_ood_file_format
+        self.mod_test_unc_f_form_ = model_test_unc_file_format
+        self.mod_ood_unc_f_form_ = model_ood_unc_file_format
     
     def save_metrics(self, outputs_folder: str):
         if self.metrics_ is not None and self.metrics_.shape[0] > 0:
@@ -140,7 +144,9 @@ class ComputationPlanPWC(ComputationPlan):
                          model_file_format="{}_model_co_{}_prec_{}",
                          model_coefs_file_format="{}_csv_coefs_co_{}_prec_{}.csv",
                          model_pred_file_format="{}_ens_test_outputs_co_{}_cp_{}_prec_{}_topl_{}.npy",
-                         model_ood_file_format="{}_ens_ood_outputs_co_{}_cp_{}_prec_{}_topl_{}.npy") 
+                         model_ood_file_format="{}_ens_ood_outputs_co_{}_cp_{}_prec_{}_topl_{}.npy",
+                         model_test_unc_file_format="{}_ens_test_uncerts_co_{}_cp_{}_prec_{}_topl_{}.npy",
+                         model_ood_unc_file_format="{}_ens_ood_uncerts_co_{}_cp_{}_prec_{}_topl_{}.npy") 
      
     def _process_model(self, comb_id: int, comb_mask: List[bool], comp_precision: str,
                        val_pred: torch.tensor, val_labels: torch.tensor,
@@ -213,6 +219,10 @@ class ComputationPlanPWC(ComputationPlan):
                             dec_coef=0.8, verbose=verbose)
                         ood_name = self.mod_ood_f_form_.format(nets_string, comb_m, coup_m, comp_precision, topl)
                         np.save(os.path.join(outputs_folder, ood_name), arr=ens_ood_pred.detach().cpu().numpy())
+                        test_uncs_name = self.mod_test_unc_f_form_.format(nets_string, comb_m, coup_m, comp_precision, topl)
+                        ood_uncs_name = self.mod_ood_unc_f_form_.format(nets_string, comb_m, coup_m, comp_precision, topl)
+                        np.save(os.path.join(outputs_folder, test_uncs_name), arr=ens_test_unc.detach().cpu().numpy())
+                        np.save(os.path.join(outputs_folder, ood_uncs_name), arr=ens_ood_unc.detach().cpu().numpy())
                         au_postproc_mets = ens_utils.get_postproc_au_mets(id_preds=ens_test_pred, ood_preds=ens_ood_pred)
                         ood_det_auroc = compute_au_from_uncerts(id_uncerts=ens_test_unc, ood_uncerts=ens_ood_unc, metric="auroc")
                         ood_det_auprc = compute_au_from_uncerts(id_uncerts=ens_test_unc, ood_uncerts=ens_ood_unc, metric="auprc")
