@@ -128,7 +128,7 @@ def prepare_computation_plan(outputs_folder: str,
     combination_fields = ["combination_size", "combination_id", "err_incons", "all_cor", "mean_pwa_var"]
     configuration_fields = ["calibrating_method", "combining_method", "coupling_method", "accuracy",
                             "accuracy1", "accuracy5", "nll", "ece", "computational_precision", "topl"]
-    uncert_fields = ["auroc", "aupr"]
+    uncert_fields = ["UNC_AUROC", "UNC_AUPRC", "MSP_AUROC", "MSP_AUPRC", "MLI_AUROC", "MLI_AUPRC"]
     
     # Create all combinations of given networks having specified sizes
     net_combinations = set([frozenset(comb)
