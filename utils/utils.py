@@ -18,7 +18,7 @@ from weensembles.CombiningMethods import comb_picker
 from weensembles.utils import cuda_mem_try
 from weensembles.CouplingMethods import coup_picker
 from utils.computation_plan import ComputationPlanCAL, ComputationPlanPWC
-from weensembles.OODDetectors import MaximumLogit, MaximumSoftmaxProbability
+from weensembles.OODDetectors import MaximumLogit, MaximumSoftmaxProbability, MaximumSoftmaxProbabilityFromProbs
 
 
 def load_npy_arr(file, device, dtype):
@@ -878,7 +878,7 @@ def compute_calibration_plot(prob_pred, labs, bin_n=10, softmax=False):
                 
     return df
 
-def create_ood_labs_preds(id_preds: torch.tensor, ood_preds: torch.tensor, method: str) -> Tuple[torch.tensor, torch.tensor]:
+def create_ood_labs_preds(id_preds: torch.tensor, ood_preds: torch.tensor, method: str, from_probs: bool = False) -> Tuple[torch.tensor, torch.tensor]:
     """Builds ood scores and labels using the specified ood postprocessing method. Scores closer to one represent higher ood conviction.
 
     Args:
@@ -893,24 +893,25 @@ def create_ood_labs_preds(id_preds: torch.tensor, ood_preds: torch.tensor, metho
     Returns:
         torch.tensor, torch.tensor: labels and ood scores.
     """
-    if method.lower() == "msp":
-        met = MaximumSoftmaxProbability()
-    elif method.lower() == "mli":
-        met = MaximumLogit()
+    if from_probs:
+        met = MaximumSoftmaxProbabilityFromProbs()
     else:
-        raise ValueError("Unsupported ood postprocessing method: {}".format(method))
+        if method.lower() == "msp":
+            met = MaximumSoftmaxProbability()
+        elif method.lower() == "mli":
+            met = MaximumLogit()
+        else:
+            raise ValueError("Unsupported ood postprocessing method: {}".format(method))
     
     dev = id_preds.device
 
-    id_scores = met.get_scores(id_preds)
-    ood_scores = met.get_scores(ood_preds)
-    scores = torch.cat([id_scores, ood_scores])
-    labels = torch.cat([torch.zeros(size=(len(id_scores),), dtype=torch.long, device=dev),
-                        torch.ones(size=(len(ood_scores),), dtype=torch.long, device=dev)])
+    scores = met.get_scores(torch.cat([id_preds, ood_preds]))
+    labels = torch.cat([torch.zeros(size=(id_preds.shape[0],), dtype=torch.long, device=dev),
+                        torch.ones(size=(ood_preds.shape[0],), dtype=torch.long, device=dev)])
     
     return labels, scores
 
-def get_postproc_au_mets(id_preds: torch.tensor, ood_preds: torch.tensor) -> Tuple[float, float, float, float]:
+def get_postproc_au_mets(id_preds: torch.tensor, ood_preds: torch.tensor, probs: bool = False) -> Tuple[float, float, float, float]:
     """Computes AUROC and AUPRC metrics for postprocessing methods msp and mli.
 
     Args:
@@ -921,6 +922,15 @@ def get_postproc_au_mets(id_preds: torch.tensor, ood_preds: torch.tensor) -> Tup
     Returns:
         tuple(float, float, float, float): msp_AUROC, msp_AUPRC, mli_AUROC, mli_AUPRC
     """
+    if probs:
+        msp_labs, msp_scores = create_ood_labs_preds(id_preds=id_preds,
+                                                     ood_preds=ood_preds,
+                                                     method="msp",
+                                                     from_probs=True)
+        msp_AUROC = compute_au_from_scores(scores=msp_scores, labels=msp_labs, metric="auroc")
+        msp_AUPRC = compute_au_from_scores(scores=msp_scores, labels=msp_labs, metric="auprc")
+        return msp_AUROC, msp_AUPRC
+        
     msp_labs, msp_scores = create_ood_labs_preds(id_preds=id_preds,
                                                     ood_preds=ood_preds,
                                                     method="msp")

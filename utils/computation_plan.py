@@ -223,11 +223,11 @@ class ComputationPlanPWC(ComputationPlan):
                         ood_uncs_name = self.mod_ood_unc_f_form_.format(nets_string, comb_m, coup_m, comp_precision, topl)
                         np.save(os.path.join(outputs_folder, test_uncs_name), arr=ens_test_unc.detach().cpu().numpy())
                         np.save(os.path.join(outputs_folder, ood_uncs_name), arr=ens_ood_unc.detach().cpu().numpy())
-                        au_postproc_mets = ens_utils.get_postproc_au_mets(id_preds=ens_test_pred, ood_preds=ens_ood_pred)
+                        au_postproc_mets = ens_utils.get_postproc_au_mets(id_preds=ens_test_pred, ood_preds=ens_ood_pred, probs=True)
                         ood_det_auroc = compute_au_from_uncerts(id_uncerts=ens_test_unc, ood_uncerts=ens_ood_unc, metric="auroc")
                         ood_det_auprc = compute_au_from_uncerts(id_uncerts=ens_test_unc, ood_uncerts=ens_ood_unc, metric="auprc")
                         row_data[0] += list(au_postproc_mets) + [ood_det_auroc, ood_det_auprc]
-                        row_cols += ["MSP_AUROC", "MSP_AUPRC", "MLI_AUROC", "MLI_AUPRC", "UNC_AUROC", "UNC_AUPRC"]
+                        row_cols += ["MSP_AUROC", "MSP_AUPRC", "UNC_AUROC", "UNC_AUPRC"]
                         
                     row_df = pd.DataFrame(data=row_data, columns=row_cols)
                     self.metrics_ = pd.concat([self.metrics_, row_df])
@@ -288,9 +288,9 @@ class ComputationPlanCAL(ComputationPlan):
                 
                 ood_name = self.mod_ood_f_form_.format(nets_string, cal_m, comp_precision)
                 np.save(os.path.join(outputs_folder, ood_name), arr=ens_ood_pred.detach().cpu().numpy())
-                au_postproc_mets = ens_utils.get_postproc_au_mets(id_preds=ens_test_pred, ood_preds=ens_ood_pred)
+                au_postproc_mets = ens_utils.get_postproc_au_mets(id_preds=ens_test_pred, ood_preds=ens_ood_pred, probs=True)
                 row_data[0] += list(au_postproc_mets)
-                row_cols += ["MSP_AUROC", "MSP_AUPRC", "MLI_AUROC", "MLI_AUPRC"]
+                row_cols += ["MSP_AUROC", "MSP_AUPRC"]
             
             row_df = pd.DataFrame(data=row_data, columns=row_cols)
             self.metrics_ = pd.concat([self.metrics_, row_df])

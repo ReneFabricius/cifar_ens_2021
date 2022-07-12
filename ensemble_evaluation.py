@@ -6,6 +6,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 import numpy as np
 import torch
+import tensorflow as tf
 
 from weensembles.CombiningMethods import comb_picker
 from weensembles.predictions_evaluation import compute_error_inconsistency
@@ -35,6 +36,8 @@ def ens_evaluation(args_dict=None):
         args = parser.parse_args()
     else:
         args = args_dict
+        
+    tf.config.experimental.set_visible_devices([], 'GPU')
     
     req_val_data = False
     for comb_m in args.combining_methods:
