@@ -10,9 +10,11 @@ import itertools
 from csv import reader
 from typing import List, Tuple
 from typing_extensions import Literal
+from keras.metrics import AUC
+from sklearn.metrics import roc_curve, precision_recall_curve
 
 from weensembles.WeightedLinearEnsemble import WeightedLinearEnsemble
-from weensembles.predictions_evaluation import ECE_sweep, compute_acc_topk, compute_nll, compute_au_from_scores
+from weensembles.predictions_evaluation import ECE_sweep, compute_acc_topk, compute_nll
 from weensembles.CalibrationEnsemble import CalibrationEnsemble
 from weensembles.CombiningMethods import comb_picker
 from weensembles.utils import cuda_mem_try
@@ -878,6 +880,95 @@ def compute_calibration_plot(prob_pred, labs, bin_n=10, softmax=False):
                 
     return df
 
+def uncerts_into_scores_labels(id_uncerts: torch.tensor, ood_uncerts: torch.tensor) -> Tuple[torch.tensor, torch.tensor]:
+    """Transforms uncertainties into scores between 0 and 1 and creates 0-1 labels. 0 for IND, 1 for OOD.
+
+    Args:
+        id_uncerts (torch.tensor): IND uncertainties
+        ood_uncerts (torch.tensor): OOD uncertainties
+    Returns:
+        scores (torch.tensor), labels (torch.tensor): Scores and labels corresponding to the inputed uncerts.
+    """
+    uncerts = torch.cat([id_uncerts, ood_uncerts])
+    scores = (uncerts - torch.min(uncerts)) / (torch.max(uncerts) - torch.min(uncerts))
+    labels = torch.cat([
+        torch.zeros(size=(len(id_uncerts),), dtype=torch.long, device=id_uncerts.device),
+        torch.ones(size=(len(ood_uncerts),), dtype=torch.long, device=id_uncerts.device)
+    ])
+    return scores, labels
+
+
+def compute_au_from_scores(scores: torch.tensor, labels: torch.tensor, metric: str) -> float:
+    """Computes area under ROC or PR curve.
+
+    Args:
+        scores (torch.tensor): Numerical scores between 0 and 1.
+        labels (torch.tensor): Correct labels 0 and 1.
+        metric (str): Specifies the curve to be used: auroc or auprc.
+
+    Returns:
+        float: Area under the curve.
+    """
+    if metric.lower() == "auroc":
+        au = AUC(num_thresholds=len(scores), curve="ROC")
+    elif metric.lower() == "auprc":
+        au = AUC(num_thresholds=len(scores), curve="PR")
+    else:
+        raise ValueError("Unsupported metric {}".format(metric))
+        
+    au.update_state(labels.cpu(), scores.cpu())
+    return au.result().numpy()
+
+def compute_au_from_uncerts(id_uncerts: torch.tensor, ood_uncerts: torch.tensor, metric:str) -> float:
+    """Computes area under ROC or PR curve.
+
+    Args:
+        id_uncerts (torch.tensor): Uncertainty scores for in distribution samples.
+        ood_uncerts (torch.tensor): Uncertainty scores for out of distribution samples.
+        metric (str): Metric to compute: auroc or auprc.
+
+    Returns:
+        float: Area under the curve.
+    """
+    scores, labels = uncerts_into_scores_labels(id_uncerts=id_uncerts, ood_uncerts=ood_uncerts)
+        
+    return compute_au_from_scores(scores=scores, labels=labels, metric=metric)
+
+def compute_curve_from_scores(scores: torch.tensor, labels: torch.tensor, metric: str) -> pd.DataFrame:
+    """Computes ROC or PR curve.
+
+    Args:
+        scores (torch.tensor): Classification scores for evaluated samples.
+        labels (torch.tensor): Correct labels. 0 for IND, 1 for OOD.
+        metric (str): Curve type to compute. roc or prc.
+    Returns:
+        pandas.DataFrame: Data frame with points constituting the curve.
+    """
+    if metric.lower() == "roc":
+        FPR, TPR, _ = roc_curve(y_true=labels.detach().cpu(), y_score=scores.detach().cpu(), pos_label=1)
+        df = pd.DataFrame({"FRP": FPR, "TPR": TPR})
+    elif metric.lower() == "prc":
+        precision, recall, _ = precision_recall_curve(y_true=labels.detach().cpu(), probas_pred=scores.detach().cpu(), pos_label=1)
+        df = pd.DataFrame({"precision": precision, "recall": recall})
+    else:
+        raise ValueError("Unsupported metric {}".format(metric))
+    
+    return df
+
+def compute_curve_from_uncerts(id_uncerts: torch.tensor, ood_uncerts: torch.tensor, metric:str) -> pd.DataFrame:
+    """Computes ROC or PR curve.
+
+    Args:
+        id_uncerts (torch.tensor): Uncertainty scores for in distribution samples.
+        ood_uncerts (torch.tensor): Uncertainty scores for out of distribution samples.
+        metric (str): Metric to compute: roc or prc.
+    Returns:
+        pandas.DataFrame: Data frame with points constituting the curve.
+    """
+    scores, labels = uncerts_into_scores_labels(id_uncerts=id_uncerts, ood_uncerts=ood_uncerts)
+    return compute_curve_from_scores(scores=scores, labels=labels, metric=metric)
+
+
 def create_ood_labs_preds(id_preds: torch.tensor, ood_preds: torch.tensor, method: str, from_probs: bool = False) -> Tuple[torch.tensor, torch.tensor]:
     """Builds ood scores and labels using the specified ood postprocessing method. Scores closer to one represent higher ood conviction.
 
@@ -944,12 +1035,29 @@ def get_postproc_au_mets(id_preds: torch.tensor, ood_preds: torch.tensor, probs:
 
     return msp_AUROC, msp_AUPRC, mli_AUROC, mli_AUPRC
 
+
+def compute_curve_from_msp(id_preds: torch.tensor, ood_preds: torch.tensor, metric: str, probs: bool=True) -> pd.DataFrame:
+    """Computes ROC or PR curve for a OOD detector created using MSP method from provided predictions.
+
+    Args:
+        id_preds (torch.tensor): IND classification predictions.
+        ood_preds (torch.tensor): OOD classification predictions.
+        metric (str): roc or prc.
+        probs (bool, optional): Whether predictions are probabilities or logits. Defaults to True.
+
+    Returns:
+        pd.DataFrame: Pandas data frame containing points of the curve.
+    """
+    labels, scores = create_ood_labs_preds(id_preds=id_preds, ood_preds=ood_preds, method="msp", from_probs=probs)
+    return compute_curve_from_scores(scores=scores, labels=labels, metric=metric)
+
     
-def evaluate_networks(net_outputs):
+def evaluate_networks(net_outputs, outputs_folder=""):
     """
     Computes accuracy, negative log likelihood and estimated calibration error for provided test outputs of penultimate layer of networks.
     Args:
         net_outputs (dict): Dictionary of network outputs as generated by function load_networks_outputs.
+        outputs_folder (str): required in case ood outputs are evaluated and curves saved.
 
     Returns:
         pandas.DataFrame: Data frame containing metrics of networks
@@ -967,6 +1075,14 @@ def evaluate_networks(net_outputs):
         if "ood_outputs" in net_outputs:
             au_mets = get_postproc_au_mets(id_preds=net_outputs["test_outputs"][i], ood_preds=net_outputs["ood_outputs"][i])
             df_net.loc[i] = [net, acc1, acc5, nll, ece] + list(au_mets)
+            
+            for net_id, net in enumerate(net_outputs["networks"]):
+                roc_file = "{}_roc.csv".format(net)
+                prc_file = "{}_prc.csv".format(net)
+                net_roc = compute_curve_from_msp(id_preds=net_outputs["test_outputs"][net_id], ood_preds=net_outputs["ood_outputs"][net_id], metric="roc")
+                net_prc = compute_curve_from_msp(id_preds=net_outputs["test_outputs"][net_id], ood_preds=net_outputs["ood_outputs"][net_id], metric="prc")
+                net_roc.to_csv(os.path.join(outputs_folder, roc_file), index=False)
+                net_prc.to_csv(os.path.join(outputs_folder, prc_file), index=False)
         else:
             df_net.loc[i] = [net, acc1, acc5, nll, ece]
     

@@ -6,7 +6,7 @@ import os
 from sklearn.model_selection import train_test_split
 import torch
 
-from weensembles.predictions_evaluation import compute_error_inconsistency, compute_acc_topk, compute_nll, ECE_sweep, compute_au_from_scores, compute_au_from_uncerts
+from weensembles.predictions_evaluation import compute_error_inconsistency, compute_acc_topk, compute_nll, ECE_sweep
 from weensembles.Ensemble import Ensemble
 import utils.utils as ens_utils
 from weensembles.CalibrationEnsemble import CalibrationEnsemble
@@ -20,8 +20,12 @@ class ComputationPlan(ABC):
                  model_file_format: str, model_coefs_file_format: str,
                  model_pred_file_format: str,
                  model_ood_file_format: str,
+                 model_msp_roc_file_format: str,
+                 model_msp_prc_file_format: str,
                  model_test_unc_file_format: str=None,
-                 model_ood_unc_file_format: str=None) -> None:
+                 model_ood_unc_file_format: str=None,
+                 model_unc_roc_file_format: str=None,
+                 model_unc_prc_file_format: str=None) -> None:
         """_summary_
 
         Args:
@@ -44,6 +48,10 @@ class ComputationPlan(ABC):
         self.mod_ood_f_form_ = model_ood_file_format
         self.mod_test_unc_f_form_ = model_test_unc_file_format
         self.mod_ood_unc_f_form_ = model_ood_unc_file_format
+        self.mod_msp_roc_f_form_ = model_msp_roc_file_format
+        self.mod_msp_prc_f_form_ = model_msp_prc_file_format
+        self.mod_unc_roc_f_form_ = model_unc_roc_file_format
+        self.mod_unc_prc_f_form_ = model_unc_prc_file_format
     
     def save_metrics(self, outputs_folder: str):
         if self.metrics_ is not None and self.metrics_.shape[0] > 0:
@@ -83,7 +91,7 @@ class ComputationPlan(ABC):
         networks = net_outputs["networks"]
         
         print("Evaluating networks")
-        df_net = ens_utils.evaluate_networks(net_outputs)
+        df_net = ens_utils.evaluate_networks(net_outputs, outputs_folder=outputs_folder)
         df_net.to_csv(os.path.join(outputs_folder, "net_metrics.csv"), index=False)
         
         net_pwa = ens_utils.pairwise_accuracies_mat(preds=net_outputs["test_outputs"], labs=net_outputs["test_labels"])
@@ -146,7 +154,11 @@ class ComputationPlanPWC(ComputationPlan):
                          model_pred_file_format="{}_ens_test_outputs_co_{}_cp_{}_prec_{}_topl_{}.npy",
                          model_ood_file_format="{}_ens_ood_outputs_co_{}_cp_{}_prec_{}_topl_{}.npy",
                          model_test_unc_file_format="{}_ens_test_uncerts_co_{}_cp_{}_prec_{}_topl_{}.npy",
-                         model_ood_unc_file_format="{}_ens_ood_uncerts_co_{}_cp_{}_prec_{}_topl_{}.npy") 
+                         model_ood_unc_file_format="{}_ens_ood_uncerts_co_{}_cp_{}_prec_{}_topl_{}.npy",
+                         model_msp_prc_file_format="{}_ens_msp_prc_co_{}_cp_{}_prec_{}_topl_{}.csv",
+                         model_msp_roc_file_format="{}_ens_msp_roc_co_{}_cp_{}_prec_{}_topl_{}.csv",
+                         model_unc_prc_file_format="{}_ens_unc_prc_co_{}_cp_{}_prec_{}_topl_{}.csv",
+                         model_unc_roc_file_format="{}_ens_unc_roc_co_{}_cp_{}_prec_{}_topl_{}.csv") 
      
     def _process_model(self, comb_id: int, comb_mask: List[bool], comp_precision: str,
                        val_pred: torch.tensor, val_labels: torch.tensor,
@@ -223,11 +235,25 @@ class ComputationPlanPWC(ComputationPlan):
                         ood_uncs_name = self.mod_ood_unc_f_form_.format(nets_string, comb_m, coup_m, comp_precision, topl)
                         np.save(os.path.join(outputs_folder, test_uncs_name), arr=ens_test_unc.detach().cpu().numpy())
                         np.save(os.path.join(outputs_folder, ood_uncs_name), arr=ens_ood_unc.detach().cpu().numpy())
+                        
                         au_postproc_mets = ens_utils.get_postproc_au_mets(id_preds=ens_test_pred, ood_preds=ens_ood_pred, probs=True)
-                        ood_det_auroc = compute_au_from_uncerts(id_uncerts=ens_test_unc, ood_uncerts=ens_ood_unc, metric="auroc")
-                        ood_det_auprc = compute_au_from_uncerts(id_uncerts=ens_test_unc, ood_uncerts=ens_ood_unc, metric="auprc")
+                        ood_det_auroc = ens_utils.compute_au_from_uncerts(id_uncerts=ens_test_unc, ood_uncerts=ens_ood_unc, metric="auroc")
+                        ood_det_auprc = ens_utils.compute_au_from_uncerts(id_uncerts=ens_test_unc, ood_uncerts=ens_ood_unc, metric="auprc")
                         row_data[0] += list(au_postproc_mets) + [ood_det_auroc, ood_det_auprc]
                         row_cols += ["MSP_AUROC", "MSP_AUPRC", "UNC_AUROC", "UNC_AUPRC"]
+                        
+                        msp_roc_name = self.mod_msp_roc_f_form_.format(nets_string, comb_m, coup_m, comp_precision, topl)
+                        msp_prc_name = self.mod_msp_prc_f_form_.format(nets_string, comb_m, coup_m, comp_precision, topl)
+                        unc_roc_name = self.mod_unc_roc_f_form_.format(nets_string, comb_m, coup_m, comp_precision, topl)
+                        unc_prc_name = self.mod_unc_prc_f_form_.format(nets_string, comb_m, coup_m, comp_precision, topl)
+                        msp_roc = ens_utils.compute_curve_from_msp(id_preds=ens_test_pred, ood_preds=ens_ood_pred, metric="roc")
+                        msp_prc = ens_utils.compute_curve_from_msp(id_preds=ens_test_pred, ood_preds=ens_ood_pred, metric="prc")
+                        unc_roc = ens_utils.compute_curve_from_uncerts(id_uncerts=ens_test_unc, ood_uncerts=ens_ood_unc, metric="roc")
+                        unc_prc = ens_utils.compute_curve_from_uncerts(id_uncerts=ens_test_unc, ood_uncerts=ens_ood_unc, metric="prc")
+                        msp_roc.to_csv(os.path.join(outputs_folder, msp_roc_name), index=False)
+                        msp_prc.to_csv(os.path.join(outputs_folder, msp_prc_name), index=False)
+                        unc_roc.to_csv(os.path.join(outputs_folder, unc_roc_name), index=False)
+                        unc_prc.to_csv(os.path.join(outputs_folder, unc_prc_name), index=False)
                         
                     row_df = pd.DataFrame(data=row_data, columns=row_cols)
                     self.metrics_ = pd.concat([self.metrics_, row_df])
@@ -241,7 +267,10 @@ class ComputationPlanCAL(ComputationPlan):
                          model_file_format="{}_model_cal_{}_prec_{}",
                          model_coefs_file_format="{}_csv_coefs_cal_{}_prec_{}.csv",
                          model_pred_file_format="{}_ens_test_outputs_cal_{}_prec_{}.npy",
-                         model_ood_file_format="{}_ens_ood_outputs_cal_{}_prec_{}.npy") 
+                         model_ood_file_format="{}_ens_ood_outputs_cal_{}_prec_{}.npy",
+                         model_msp_prc_file_format="{}_ens_msp_prc_cal_{}_prec_{}.csv",
+                         model_msp_roc_file_format="{}_ens_msp_roc_cal_{}_prec_{}.csv")
+ 
  
     def _process_model(self, comb_id: int, comb_mask: List[bool], comp_precision: str,
                        val_pred: torch.tensor, val_labels: torch.tensor,
@@ -291,6 +320,13 @@ class ComputationPlanCAL(ComputationPlan):
                 au_postproc_mets = ens_utils.get_postproc_au_mets(id_preds=ens_test_pred, ood_preds=ens_ood_pred, probs=True)
                 row_data[0] += list(au_postproc_mets)
                 row_cols += ["MSP_AUROC", "MSP_AUPRC"]
+
+                msp_roc_name = self.mod_msp_roc_f_form_.format(nets_string, cal_m, comp_precision)
+                msp_prc_name = self.mod_msp_prc_f_form_.format(nets_string, cal_m, comp_precision)
+                msp_roc = ens_utils.compute_curve_from_msp(id_preds=ens_test_pred, ood_preds=ens_ood_pred, metric="roc")
+                msp_prc = ens_utils.compute_curve_from_msp(id_preds=ens_test_pred, ood_preds=ens_ood_pred, metric="prc")
+                msp_roc.to_csv(os.path.join(outputs_folder, msp_roc_name), index=False)
+                msp_prc.to_csv(os.path.join(outputs_folder, msp_prc_name), index=False)
             
             row_df = pd.DataFrame(data=row_data, columns=row_cols)
             self.metrics_ = pd.concat([self.metrics_, row_df])
