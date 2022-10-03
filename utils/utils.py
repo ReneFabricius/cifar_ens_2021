@@ -946,7 +946,7 @@ def compute_curve_from_scores(scores: torch.tensor, labels: torch.tensor, metric
     """
     if metric.lower() == "roc":
         FPR, TPR, _ = roc_curve(y_true=labels.detach().cpu(), y_score=scores.detach().cpu(), pos_label=1)
-        df = pd.DataFrame({"FRP": FPR, "TPR": TPR})
+        df = pd.DataFrame({"FPR": FPR, "TPR": TPR})
     elif metric.lower() == "prc":
         precision, recall, _ = precision_recall_curve(y_true=labels.detach().cpu(), probas_pred=scores.detach().cpu(), pos_label=1)
         df = pd.DataFrame({"precision": precision, "recall": recall})
@@ -1079,8 +1079,8 @@ def evaluate_networks(net_outputs, outputs_folder=""):
             for net_id, net in enumerate(net_outputs["networks"]):
                 roc_file = "{}_roc.csv".format(net)
                 prc_file = "{}_prc.csv".format(net)
-                net_roc = compute_curve_from_msp(id_preds=net_outputs["test_outputs"][net_id], ood_preds=net_outputs["ood_outputs"][net_id], metric="roc")
-                net_prc = compute_curve_from_msp(id_preds=net_outputs["test_outputs"][net_id], ood_preds=net_outputs["ood_outputs"][net_id], metric="prc")
+                net_roc = compute_curve_from_msp(id_preds=net_outputs["test_outputs"][net_id], ood_preds=net_outputs["ood_outputs"][net_id], metric="roc", probs = False)
+                net_prc = compute_curve_from_msp(id_preds=net_outputs["test_outputs"][net_id], ood_preds=net_outputs["ood_outputs"][net_id], metric="prc", probs = False)
                 net_roc.to_csv(os.path.join(outputs_folder, roc_file), index=False)
                 net_prc.to_csv(os.path.join(outputs_folder, prc_file), index=False)
         else:
