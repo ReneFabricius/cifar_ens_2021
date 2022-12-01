@@ -10,8 +10,11 @@ from utils.utils import load_networks_outputs
 
 class Test_ExecCompPlan(unittest.TestCase):
     def test_empty_folder_cal_plan(self):
+        outputs_folder = "./unit_tests/computation_plan/outputs_folder_4"
+        if not os.path.exists(outputs_folder):
+            os.mkdir(outputs_folder)
         net_outputs = load_networks_outputs(nn_outputs_path="./unit_tests/computation_plan/networks_folder",
-                                            experiment_out_path="./unit_tests/computation_plan/outputs_folder_4",
+                                            experiment_out_path=outputs_folder,
                                             device="cpu",
                                             dtype=torch.float32,
                                             load_train_data=False)
@@ -51,8 +54,11 @@ class Test_ExecCompPlan(unittest.TestCase):
         os.mkdir("./unit_tests/computation_plan/outputs_folder_4")
 
     def test_empty_folder_pwc_plan(self):
+        outputs_path = "./unit_tests/computation_plan/outputs_folder_4"
+        if not os.path.exists(outputs_path):
+            os.mkdir(outputs_path)
         net_outputs = load_networks_outputs(nn_outputs_path="./unit_tests/computation_plan/networks_folder",
-                                            experiment_out_path="./unit_tests/computation_plan/outputs_folder_4",
+                                            experiment_out_path=outputs_path,
                                             device="cpu",
                                             dtype=torch.float32,
                                             load_train_data=False)

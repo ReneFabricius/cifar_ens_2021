@@ -274,9 +274,10 @@ def prepare_computation_plan(outputs_folder: str,
     # Find existing models in outputs folder
     ex_pwc = re.compile(r"^(?P<nets>.*?)_model_co_(?P<comb_m>.*?)_prec_(?P<prec>.*?)$")
     ex_cal = re.compile(r"^(?P<nets>.*?)_model_cal_(?P<cal_m>.*?)_prec_(?P<prec>.*?)$")
-        
-    pwc_models = [mtch for mtch in map(ex_pwc.match, os.listdir(outputs_folder)) if mtch is not None]
-    cal_models = [mtch for mtch in map(ex_cal.match, os.listdir(outputs_folder)) if mtch is not None]
+    
+    out_f_listdir = os.listdir(outputs_folder) if os.path.exists(outputs_folder) else [] 
+    pwc_models = [mtch for mtch in map(ex_pwc.match, out_f_listdir) if mtch is not None]
+    cal_models = [mtch for mtch in map(ex_cal.match, out_f_listdir) if mtch is not None]
     
     existing_pwc_models = []
     for pwc_model in pwc_models:
