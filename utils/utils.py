@@ -1,6 +1,4 @@
 import os
-from pickle import load
-from attr import frozen
 import numpy as np
 import pandas as pd
 import torch
@@ -29,15 +27,23 @@ def load_npy_arr(file, device, dtype):
     return arr
 
 
-def load_networks_outputs(nn_outputs_path, experiment_out_path=None, device='cpu', dtype=torch.float, load_train_data=True, load_ood_data=False):
+def load_networks_outputs(nn_outputs_path: str, experiment_out_path: str=None, device: str='cpu', dtype: torch.dtype=torch.float,
+                          load_train_data: bool=True, load_ood_data: bool=False, test_set: str="test"):
+    """Loads outputs and labels of several classifiers for several sample sets.
+
+    Args:
+        nn_outputs_path (str): Path where the data are stored.
+        experiment_out_path (str, optional): Folder, if specified, saves a txt file with order of the classifiers as returned by this function. Defaults to None.
+        device (str, optional): Device to return the data on. Defaults to 'cpu'.
+        dtype (torch.dtype, optional): Dtype to return the data in. Defaults to torch.float.
+        load_train_data (bool, optional): Whether to load training data. Defaults to True.
+        load_ood_data (bool, optional): Whether to load ood data. Defaults to False.
+        test_set (str, optional): Name of the test set. Defaults to "test".
+
+    Returns:
+        dict: Dictionary containing tensors with loaded outputs and labels and a list of classifier names. Dimensions in the output tensors are network, sample, class.
     """
-    Loads network outputs for single replication. Dimensions in the output tensors are network, sample, class.
-    :param nn_outputs_path: replication outputs path.
-    :param experiment_out_path: if not None a path to folder where to store networks_order file
-    containing the order of the networks
-    :param device: device to use
-    :return: dictionary with network outputs and labels
-    """
+    
     networks = [fold for fold in os.listdir(nn_outputs_path) if os.path.isdir(os.path.join(nn_outputs_path, fold))]
 
     if experiment_out_path is not None:
@@ -45,47 +51,26 @@ def load_networks_outputs(nn_outputs_path, experiment_out_path=None, device='cpu
         for net in networks:
             networks_order.write(net + "\n")
         networks_order.close()
-
-    
-    test_outputs = []
-    for net in networks:
-        test_outputs.append(load_npy_arr(os.path.join(nn_outputs_path, net, 'test_outputs.npy'), device=device, dtype=dtype).
-                            unsqueeze(0))
-    test_outputs = torch.cat(test_outputs, 0)
-    test_labels = load_npy_arr(os.path.join(nn_outputs_path, networks[0], 'test_labels.npy'), device=device, dtype=torch.long)
-
-    if load_train_data:
-        train_outputs = []
-        for net in networks:
-            train_outputs.append(load_npy_arr(os.path.join(nn_outputs_path, net, 'train_outputs.npy'), device=device, dtype=dtype).
-                                unsqueeze(0))
-        train_outputs = torch.cat(train_outputs, 0)
-        train_labels = load_npy_arr(os.path.join(nn_outputs_path, networks[0], 'train_labels.npy'), device=device, dtype=torch.long)
         
-    if load_ood_data:
-        ood_outputs = []
-        for net in networks:
-            ood_outputs.append(load_npy_arr(os.path.join(nn_outputs_path, net, 'ood_outputs.npy'), device=device, dtype=dtype).unsqueeze(0))
-        ood_outputs = torch.cat(ood_outputs, 0)
-        ood_labels = load_npy_arr(os.path.join(nn_outputs_path, networks[0], 'ood_labels.npy'), device=device, dtype=torch.long)
-
-    val_outputs = []
-    for net in networks:
-        val_outputs.append(load_npy_arr(os.path.join(nn_outputs_path, net, 'val_outputs.npy'), device=device, dtype=dtype).
-                           unsqueeze(0))
-    val_outputs = torch.cat(val_outputs, 0)
-    val_labels = load_npy_arr(os.path.join(nn_outputs_path, networks[0], 'val_labels.npy'), device=device, dtype=torch.long)
-
-    ret = {"val_outputs": val_outputs,
-            "val_labels": val_labels, "test_outputs": test_outputs, "test_labels": test_labels,
-            "networks": networks}
+    sample_sets = ["val", test_set]
     if load_train_data:
-        ret["train_outputs"] = train_outputs
-        ret["train_labels"] = train_labels
-    
+        sample_sets.append("train")
     if load_ood_data:
-        ret["ood_outputs"] = ood_outputs
-        ret["ood_labels"] = ood_labels
+        sample_sets.append("ood")
+    
+    ret = {"networks": networks}
+
+    for sample_set in sample_sets:
+        outputs = []
+        for net in networks:
+            outputs_path = os.path.join(nn_outputs_path, net, f"{sample_set}_outputs.npy")
+            outputs.append(load_npy_arr(file=outputs_path, device=device, dtype=dtype).unsqueeze(0))
+        outputs = torch.cat(tensors=outputs, dim=0)
+    
+        labels_path = os.path.join(nn_outputs_path, networks[0], f"{sample_set}_labels.npy")
+        labels = load_npy_arr(file=labels_path, device=device, dtype=torch.long)
+        ret[f"{sample_set}_outputs"] = outputs
+        ret[f"{sample_set}_labels"] = labels
     
     return ret
 
@@ -129,7 +114,8 @@ def prepare_computation_plan(outputs_folder: str,
     
     combination_fields = ["combination_size", "combination_id", "err_incons", "all_cor", "mean_pwa_var"]
     configuration_fields = ["calibrating_method", "combining_method", "coupling_method", "accuracy",
-                            "accuracy1", "accuracy5", "nll", "ece", "computational_precision", "topl"]
+                            "accuracy1", "accuracy5", "nll", "ece", "computational_precision", "topl",
+                            "prediction_time"]
     uncert_fields = ["UNC_AUROC", "UNC_AUPRC", "MSP_AUROC", "MSP_AUPRC", "MLI_AUROC", "MLI_AUPRC"]
     
     # Create all combinations of given networks having specified sizes
@@ -143,7 +129,7 @@ def prepare_computation_plan(outputs_folder: str,
         with open(ens_comb_file) as comb_file:
             comb_file_reader = reader(comb_file)
             for row in comb_file_reader:
-                combination = frozenset(row)
+                combination = frozenset(row.split(","))
                 if not combination.issubset(nets_set):
                     print("Warning: some network in combination {} is not a part of available network outputs: {}".format(
                         combination, nets_set
@@ -216,6 +202,7 @@ def prepare_computation_plan(outputs_folder: str,
     else:
         existing_combs = pd.DataFrame(columns=all_networks + ["combination_id"])
     
+    
     combinations_df = combinations_df.merge(existing_combs, how="left", on=all_networks)
     combinations_df["combination_id"] = combinations_df["combination_id"].astype(pd.Int64Dtype())
     max_combination_id = combinations_df["combination_id"].max()
@@ -257,6 +244,11 @@ def prepare_computation_plan(outputs_folder: str,
     if loading_existing_models == "no":
         pwc_configs["model_file"] = np.nan
         cal_configs["model_file"] = np.nan
+
+        print("Planned pwc configurations:")
+        print(pwc_configs.to_string())
+        print("Planned cal configurations:")
+        print(cal_configs.to_string())
         
         return (ComputationPlanPWC(plan=pwc_configs, metrics=pd.DataFrame(), device=device),
                 ComputationPlanCAL(plan=cal_configs, metrics=pd.DataFrame(), device=device))
@@ -304,6 +296,11 @@ def prepare_computation_plan(outputs_folder: str,
     
     pwc_metrics = pd.DataFrame() if pwc_metrics is None else pwc_metrics
     cal_metrics = pd.DataFrame() if cal_metrics is None else cal_metrics
+    
+    print("Planned pwc configurations:")
+    print(pwc_configs.to_string())
+    print("Planned cal configurations:")
+    print(cal_configs.to_string())
 
     return (ComputationPlanPWC(plan=pwc_configs, metrics=pwc_metrics, device=device),
             ComputationPlanCAL(plan=cal_configs, metrics=cal_metrics, device=device))
@@ -679,7 +676,7 @@ def average_Rs(outputs_path, replications, folds=None, device="cuda"):
         combining_methods_pd = pd.DataFrame(combining_methods)
         combining_methods_pd.to_csv(os.path.join(outputs_path, "R_mat_co_m_names.csv"), index=False, header=False)
 
-
+@torch.no_grad()
 def pairwise_accuracies_mat(preds, labs):
     """Computes matrices of pairwise accuracies for provided predictions according to provided labels
 
@@ -695,6 +692,8 @@ def pairwise_accuracies_mat(preds, labs):
         for c2 in range(c1 + 1, k):
             mask = (labs == c1) + (labs == c2)
             cur_n = torch.sum(mask)
+            if cur_n <= 0:
+                print(f"Warning: classes: {c1}, {c2} not present in the test set.") 
             cur_preds = preds[:, mask][:, :, [c1, c2]]
             cur_labs = labs[mask]
             c1m = cur_labs == c1
@@ -702,10 +701,9 @@ def pairwise_accuracies_mat(preds, labs):
             cur_labs[c1m] = 0
             cur_labs[c2m] = 1
             _, cur_inds = torch.topk(cur_preds, k=1, dim=-1)
-            cur_accs = torch.sum(cur_inds.squeeze() == cur_labs, dim=-1) / cur_n
+            cur_accs = torch.div(torch.sum(cur_inds.squeeze() == cur_labs, dim=-1), cur_n)
             PWA[:, c1, c2] = cur_accs
             PWA[:, c2, c1] = cur_accs
-    
     return PWA
             
             
@@ -1231,3 +1229,18 @@ def bc_mapping(k):
     M_ef[min_ones == rang] = -1
 
     return M, M_ef
+
+
+def depth_walk(root, exact_depth):
+    dirs = [root]
+    for depth in range(exact_depth):
+        subdirs = []
+        for dir in dirs:
+            if depth == 0:
+                cur_subdirs = [name for name in os.listdir(dir) if os.path.isdir(os.path.join(dir, name))]
+            else:
+                cur_subdirs = [os.path.join(dir, name) for name in os.listdir(os.path.join(root, dir)) if os.path.isdir(os.path.join(root, dir, name))]
+        subdirs += cur_subdirs
+        dirs = subdirs
+    
+    return dirs

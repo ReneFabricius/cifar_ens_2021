@@ -115,7 +115,9 @@ class ComputationPlan(ABC):
                 ood_pred = None
             
             err_inc, all_cor = compute_error_inconsistency(preds=test_pred, tar=test_lab)
-            mean_pwa_var = ens_utils.average_variance(inp=net_pwa[comb_mask])
+
+            comb_pwa = net_pwa[comb_mask]
+            mean_pwa_var = ens_utils.average_variance(inp=comb_pwa)
         
             if req_comb_val_data: 
                 train_pred = net_outputs["train_outputs"][comb_mask]
@@ -182,11 +184,14 @@ class ComputationPlanPWC(ComputationPlan):
             wle = WeightedLinearEnsemble(c=c, k=k, device=self.dev_, dtp=comp_dtype)
             if pd.isna(model_file):
                 wle.fit(preds=val_pred, labels=val_labels, combining_method=comb_m,
-                        verbose=verbose, val_preds=combiner_val_pred, val_labels=combiner_val_labels)
+                        verbose=verbose, val_preds=combiner_val_pred, val_labels=combiner_val_labels,
+                        constituent_names=networks)
                 self.save_model(outputs_folder=outputs_folder, model=wle, nets=nets_string,
                                 method=comb_m, comp_prec=comp_precision, verbose=verbose)
             else:
                wle.load(os.path.join(outputs_folder, model_file))
+               if hasattr(wle, "constituent_names_") and wle.constituent_names_ is not None:
+                   assert wle.constituent_names_ == networks
             
             coup_methods = self.plan_[(self.plan_["combination_id"] == comb_id) &
                                       (self.plan_["computational_precision"] == comp_precision) &
@@ -201,24 +206,43 @@ class ComputationPlanPWC(ComputationPlan):
                 for topl in topl_vals:
                     if verbose > 0:
                         print("Processing topl value {}".format(topl)) 
-                    ens_test_pred, ens_test_unc = cuda_mem_try(
+                    if self.dev_.startswith("cuda"):
+                        # Ugly hack due to troubles with recovering from OOM
+                        if topl < 10:
+                            start_bsz = 5300
+                        elif topl < 25:
+                            start_bsz = 6700
+                        elif topl < 100:
+                            start_bsz = 13100
+                        elif topl < 500:
+                            start_bsz = 25600
+                        elif topl < 1000:
+                            start_bsz = 1600
+                        else:
+                            start_bsz = 5
+                    else:
+                        start_bsz = test_pred.shape[1]
+                    (ens_test_pred, ens_test_unc), (time_full, time_successful) = cuda_mem_try(
                         fun=lambda bsz: wle.predict_proba(preds=test_pred,
                                                           coupling_method=coup_m,
                                                           verbose=verbose, l=topl if topl > 0 else k,
                                                           batch_size=bsz,
                                                           predict_uncertainty=processing_ood),
-                        start_bsz=test_pred.shape[1],
+                        start_bsz=start_bsz,
                         device=self.dev_,
-                        dec_coef=0.8, verbose=verbose)
+                        dec_coef=0.8, verbose=verbose,
+                        return_times=True)
+                    if verbose > 0:
+                        print(f"Prediction time full: {time_full:.4f} ms, successful: {time_successful:.4f} ms")
                     pred_name = self.mod_pred_f_form_.format(nets_string, comb_m, coup_m, comp_precision, topl)
                     np.save(os.path.join(outputs_folder, pred_name), arr=ens_test_pred.detach().cpu().numpy())
                     acc1, acc5, nll, ece = self.compute_metrics(predictions=ens_test_pred, labels=test_labels)
                     row_data = [comb_mask + [comb_id, sum(comb_mask), err_inc, all_cor, mean_pwa_var,
                                             comb_m, coup_m, topl, comp_precision,
-                                            acc1, acc5, nll, ece]]
+                                            acc1, acc5, nll, ece, time_successful]]
                     row_cols = networks + ["combination_id", "combination_size", "err_incons", "all_cor", "mean_pwa_var",
                                            "combining_method", "coupling_method", "topl", "computational_precision",
-                                           "accuracy1", "accuracy5", "nll", "ece"]
+                                           "accuracy1", "accuracy5", "nll", "ece", "prediction_time"]
                     if processing_ood:
                         ens_ood_pred, ens_ood_unc = cuda_mem_try(
                             fun=lambda bsz: wle.predict_proba(preds=ood_pred,
@@ -295,11 +319,15 @@ class ComputationPlanCAL(ComputationPlan):
             cale = CalibrationEnsemble(c=c, k=k, device=self.dev_, dtp=comp_dtype)
             if pd.isna(model_file):
                 cale.fit(preds=val_pred, labels=val_labels, calibration_method=cal_m,
-                        verbose=verbose, val_preds=combiner_val_pred, val_labels=combiner_val_labels)
+                        verbose=verbose, val_preds=combiner_val_pred, val_labels=combiner_val_labels,
+                        constituent_names=networks)
                 self.save_model(outputs_folder=outputs_folder, model=cale, nets=nets_string,
                                 method=cal_m, comp_prec=comp_precision, verbose=verbose)
             else:
                cale.load(os.path.join(outputs_folder, model_file))
+               if hasattr(cale, "constituent_names_") and cale.constituent_names_ is not None:
+                   assert cale.constituent_names_ == networks
+
             
             ens_test_pred = cale.predict_proba(preds=test_pred)
             

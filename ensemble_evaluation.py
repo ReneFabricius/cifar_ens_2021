@@ -1,16 +1,9 @@
-import os
 import argparse
 import sys
-from itertools import combinations
-import pandas as pd
-from sklearn.model_selection import train_test_split
-import numpy as np
 import torch
-import tensorflow as tf
 
 from weensembles.CombiningMethods import comb_picker
-from weensembles.predictions_evaluation import compute_error_inconsistency
-from utils.utils import load_networks_outputs, evaluate_ens, evaluate_networks, linear_pw_ens_train_save, calibrating_ens_train_save, pairwise_accuracies_mat, average_variance
+from utils.utils import load_networks_outputs
 from utils.utils import prepare_computation_plan
 
 def ens_evaluation(args_dict=None):
@@ -32,12 +25,14 @@ def ens_evaluation(args_dict=None):
         parser.add_argument('-topl', nargs="+", default=[-1], type=int, help="Topl values to test")
         parser.add_argument('-process_ood', dest="process_ood", action="store_true",
                             help="Enables processing of ood samples. If specified, all the networks are expected to contain ood outputs.")
+        parser.add_argument('-test_set', type=str, default="test", help="Prefix of the constituent output files to compute testing metrics on. (Mainly for hyperparameter tuning.)")
         parser.set_defaults(compute_pwm=False, save_sweep_C=False, process_ood=False)
         args = parser.parse_args()
     else:
         args = args_dict
         
-    tf.config.experimental.set_visible_devices([], 'GPU')
+    print("Running with arguments:")
+    print(args)
     
     req_val_data = False
     for comb_m in args.combining_methods:
@@ -50,7 +45,12 @@ def ens_evaluation(args_dict=None):
                                         device=args.device,
                                         dtype=torch.float64 if "double" in args.comp_precisions else torch.float32,
                                         load_train_data=req_val_data,
-                                        load_ood_data=args.process_ood)
+                                        load_ood_data=args.process_ood,
+                                        test_set=args.test_set)
+    default_test_set = "test"
+    if args.test_set != default_test_set:
+        renaming = {f"{args.test_set}_labels": "test_labels", f"{args.test_set}_outputs": "test_outputs"}
+        net_outputs = {renaming.get(key, key): value for key, value in net_outputs.items()}
     
     comp_plan_pwc, comp_plan_cal = prepare_computation_plan(outputs_folder=args.output_folder,
                                                             networks_names=net_outputs["networks"],
