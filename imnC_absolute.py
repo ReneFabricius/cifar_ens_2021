@@ -85,9 +85,10 @@ def compute_absolute_CE(args_dict=None):
             pwc_output_fs = [mtch for mtch in map(ex_pwc.match, cur_f_list) if mtch is not None]
             for pwc_out_f in pwc_output_fs:
                 error = compute_error(folder=cur_fold, match=pwc_out_f, labels=labels)
+                sorted_nets = '+'.join(sorted(pwc_out_f['nets'].split('+')))
                 row = pd.DataFrame(
                     {
-                        "nets": pwc_out_f['nets'],
+                        "nets": sorted_nets,
                         "comb_size": len(pwc_out_f['nets'].split('+')),
                         "combining_method": pwc_out_f['comb_m'],
                         "coupling_method": pwc_out_f['coup_m'],
@@ -103,9 +104,10 @@ def compute_absolute_CE(args_dict=None):
             cal_output_fs = [mtch for mtch in map(ex_cal.match, cur_f_list) if mtch is not None]
             for cal_out_f in cal_output_fs:
                 error = compute_error(folder=cur_fold, match=cal_out_f, labels=labels)
+                sorted_nets = '+'.join(sorted(cal_out_f['nets'].split('+')))
                 row = pd.DataFrame(
                     {
-                        "nets": cal_out_f['nets'],
+                        "nets": sorted_nets,
                         "comb_size": len(cal_out_f['nets'].split('+')),
                         "calibrating_method": cal_out_f['cal_m'],
                         "computational_precision": cal_out_f['prec'],
