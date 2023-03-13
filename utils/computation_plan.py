@@ -185,7 +185,7 @@ class ComputationPlanPWC(ComputationPlan):
             if pd.isna(model_file):
                 wle.fit(preds=val_pred, labels=val_labels, combining_method=comb_m,
                         verbose=verbose, val_preds=combiner_val_pred, val_labels=combiner_val_labels,
-                        constituent_names=networks)
+                        constituent_names=np.array(networks)[np.array(comb_mask)].tolist())
                 self.save_model(outputs_folder=outputs_folder, model=wle, nets=nets_string,
                                 method=comb_m, comp_prec=comp_precision, verbose=verbose)
             else:
@@ -320,7 +320,7 @@ class ComputationPlanCAL(ComputationPlan):
             if pd.isna(model_file):
                 cale.fit(preds=val_pred, labels=val_labels, calibration_method=cal_m,
                         verbose=verbose, val_preds=combiner_val_pred, val_labels=combiner_val_labels,
-                        constituent_names=networks)
+                        constituent_names=np.array(networks)[np.array(comb_mask)].tolist())
                 self.save_model(outputs_folder=outputs_folder, model=cale, nets=nets_string,
                                 method=cal_m, comp_prec=comp_precision, verbose=verbose)
             else:
