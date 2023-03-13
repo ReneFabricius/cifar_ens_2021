@@ -181,17 +181,18 @@ class ComputationPlanPWC(ComputationPlan):
             model_file = self.plan_[(self.plan_["combination_id"] == comb_id) &
                                     (self.plan_["computational_precision"] == comp_precision) &
                                     (self.plan_["combining_method"] == comb_m)]["model_file"].iloc[0]
+            cur_networks = np.array(networks)[np.array(comb_mask)].tolist()
             wle = WeightedLinearEnsemble(c=c, k=k, device=self.dev_, dtp=comp_dtype)
             if pd.isna(model_file):
                 wle.fit(preds=val_pred, labels=val_labels, combining_method=comb_m,
                         verbose=verbose, val_preds=combiner_val_pred, val_labels=combiner_val_labels,
-                        constituent_names=np.array(networks)[np.array(comb_mask)].tolist())
+                        constituent_names=cur_networks)
                 self.save_model(outputs_folder=outputs_folder, model=wle, nets=nets_string,
                                 method=comb_m, comp_prec=comp_precision, verbose=verbose)
             else:
                wle.load(os.path.join(outputs_folder, model_file))
                if hasattr(wle, "constituent_names_") and wle.constituent_names_ is not None:
-                   assert wle.constituent_names_ == networks
+                   assert wle.constituent_names_ == cur_networks
             
             coup_methods = self.plan_[(self.plan_["combination_id"] == comb_id) &
                                       (self.plan_["computational_precision"] == comp_precision) &
@@ -316,17 +317,18 @@ class ComputationPlanCAL(ComputationPlan):
             model_file = self.plan_[(self.plan_["combination_id"] == comb_id) &
                                     (self.plan_["computational_precision"] == comp_precision) &
                                     (self.plan_["calibrating_method"] == cal_m)]["model_file"].iloc[0]
+            cur_networks = np.array(networks)[np.array(comb_mask)].tolist()
             cale = CalibrationEnsemble(c=c, k=k, device=self.dev_, dtp=comp_dtype)
             if pd.isna(model_file):
                 cale.fit(preds=val_pred, labels=val_labels, calibration_method=cal_m,
                         verbose=verbose, val_preds=combiner_val_pred, val_labels=combiner_val_labels,
-                        constituent_names=np.array(networks)[np.array(comb_mask)].tolist())
+                        constituent_names=cur_networks)
                 self.save_model(outputs_folder=outputs_folder, model=cale, nets=nets_string,
                                 method=cal_m, comp_prec=comp_precision, verbose=verbose)
             else:
                cale.load(os.path.join(outputs_folder, model_file))
                if hasattr(cale, "constituent_names_") and cale.constituent_names_ is not None:
-                   assert cale.constituent_names_ == networks
+                   assert cale.constituent_names_ == cur_networks
 
             
             ens_test_pred = cale.predict_proba(preds=test_pred)
