@@ -64,17 +64,22 @@ def ens_prediction(args_dict=None):
             wle.load(os.path.join(args.models_folder, pwc_model.string), verbose=args.verbose)
             
             for subf in subfolders:
+                out_f_name = f"{pwc_model['nets']}_ens_test_outputs_co_{row['combining_method']}_cp_{row['coupling_method']}_prec_{args.comp_precisions[0]}_topl_{row['topl']}.npy"
+                out_f = os.path.join(args.testing_root, subf, out_f_name)
+                if os.path.exists(out_f):
+                    if args.verbose > 0:
+                        print(f"Skipping existing file {out_f}")
+                    continue
+                
                 net_out = load_net_outputs(folder=os.path.join(args.testing_root, subf), networks=wle.constituent_names_, device=args.device)
                 wle_pred = cuda_mem_try(
                     fun = lambda bsz: wle.predict_proba(
                         preds=net_out, coupling_method=row['coupling_method'],
                         verbose=args.verbose, l=row["topl"], batch_size=bsz),
-                    start_bsz=net_out.shape[1],
+                    start_bsz=200,
                     device=args.device,
                     dec_coef=0.5,
                     verbose=args.verbose)
-                out_f_name = f"{pwc_model['nets']}_ens_test_outputs_co_{row['combining_method']}_cp_{row['coupling_method']}_prec_{args.comp_precisions[0]}_topl_{row['topl']}.npy"
-                out_f = os.path.join(args.testing_root, subf, out_f_name)
                 np.save(out_f, wle_pred.cpu())
    
     cal_method = args.calibrating_methods[0]
@@ -95,7 +100,7 @@ def ens_prediction(args_dict=None):
             cal_pred = cuda_mem_try(
                 fun = lambda bsz: cal.predict_proba(
                     preds=net_out, verbose=args.verbose, batch_size=bsz),
-                start_bsz=net_out.shape[1],
+                start_bsz=200,
                 device=args.device,
                 dec_coef=0.5,
                 verbose=args.verbose)
@@ -104,7 +109,8 @@ def ens_prediction(args_dict=None):
             np.save(out_f, cal_pred.cpu())
 
 
-    
+if __name__ == "__main__":
+    ens_prediction() 
 
 
  
