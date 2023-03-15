@@ -1240,7 +1240,7 @@ def depth_walk(root, exact_depth):
                 cur_subdirs = [name for name in os.listdir(dir) if os.path.isdir(os.path.join(dir, name))]
             else:
                 cur_subdirs = [os.path.join(dir, name) for name in os.listdir(os.path.join(root, dir)) if os.path.isdir(os.path.join(root, dir, name))]
-        subdirs += cur_subdirs
+            subdirs += cur_subdirs
         dirs = subdirs
     
     return dirs
