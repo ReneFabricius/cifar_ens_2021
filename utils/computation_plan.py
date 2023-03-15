@@ -223,7 +223,7 @@ class ComputationPlanPWC(ComputationPlan):
                             start_bsz = 5
                     else:
                         start_bsz = test_pred.shape[1]
-                    (ens_test_pred, ens_test_unc), (time_full, time_successful) = cuda_mem_try(
+                    ens_ret, (time_full, time_successful) = cuda_mem_try(
                         fun=lambda bsz: wle.predict_proba(preds=test_pred,
                                                           coupling_method=coup_m,
                                                           verbose=verbose, l=topl if topl > 0 else k,
@@ -233,6 +233,11 @@ class ComputationPlanPWC(ComputationPlan):
                         device=self.dev_,
                         dec_coef=0.8, verbose=verbose,
                         return_times=True)
+                    
+                    if processing_ood:
+                        ens_test_pred, ens_test_unc = ens_ret
+                    else:
+                        ens_test_pred = ens_ret
                     if verbose > 0:
                         print(f"Prediction time full: {time_full:.4f} ms, successful: {time_successful:.4f} ms")
                     pred_name = self.mod_pred_f_form_.format(nets_string, comb_m, coup_m, comp_precision, topl)
