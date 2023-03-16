@@ -108,18 +108,12 @@ def ens_prediction(args_dict=None):
         print(f"Processing model {cal_model.string}")
         networks_sorted = cal_model["nets"].split("+")
         
-        cal = CAL(c=len(networks_sorted), k=K, device=args.dev)
-        cal.load(cal_model.string, verbose=args.verbose)
+        cal = CAL(c=len(networks_sorted), k=K, device=args.device)
+        cal.load(os.path.join(args.models_folder, cal_model.string), verbose=args.verbose)
         
         for subf in subfolders:
             net_out = load_net_outputs(folder=os.path.join(args.testing_root, subf), networks=cal.constituent_names_, device=args.device)
-            cal_pred = cuda_mem_try(
-                fun = lambda bsz: cal.predict_proba(
-                    preds=net_out, verbose=args.verbose, batch_size=bsz),
-                start_bsz=500,
-                device=args.device,
-                dec_coef=0.5,
-                verbose=args.verbose)
+            cal_pred = cal.predict_proba(preds=net_out, verbose=args.verbose)
             out_f_name = f"{cal_model['nets']}_{file_content_name}_cal_{cal_method}_prec_{comp_precision}{file_extension}"
             out_f = os.path.join(args.testing_root, subf, out_f_name)
 
