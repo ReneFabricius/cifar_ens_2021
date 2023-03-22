@@ -7,7 +7,7 @@ from sklearn.model_selection import train_test_split
 import numpy as np
 import torch
 
-from weensembles.CalibratingMethod import TemperatureScaling
+from weensembles.CalibratingMethods import TemperatureScaling
 from weensembles.CombiningMethods import comb_picker
 from weensembles.predictions_evaluation import compute_error_inconsistency
 from utils.utils import load_networks_outputs, evaluate_ens, evaluate_networks, linear_pw_ens_train_save, calibrating_ens_train_save, pairwise_accuracies_mat, average_variance
