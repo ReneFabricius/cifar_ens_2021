@@ -14,10 +14,16 @@ from utils.utils import load_npy_arr, depth_walk
 
 
 def compute_error(folder, match, labels):
-    outputs = load_npy_arr(file=os.path.join(folder, match.string), device=labels.device, dtype=torch.float32)
-    acc_top1 = compute_acc_topk(pred=outputs, tar=labels, k=1)
-    return 1.0 - acc_top1
-
+    outputs = np.load(os.path.join(folder, match.string))
+    if not hasattr(outputs, "files"):
+        acc_top1 = compute_acc_topk(pred=torch.from_numpy(outputs).to(labels.device), tar=labels, k=1)
+        return 1.0 - acc_top1
+    
+    inds = torch.from_numpy(outputs["indices"]).to(labels.device)
+    top_inds = inds[:, 0].squeeze()
+    acc = torch.sum(top_inds == labels) / labels.shape[0]
+    return 1.0 - acc.item()
+    
 
 def compute_absolute_CE(args_dict=None):
     if args_dict is None:
@@ -60,16 +66,22 @@ def compute_absolute_CE(args_dict=None):
     cal_df = pd.DataFrame()
    
     ex_net = re.compile(r"^(?P<net>.*?_IM2012)_outputs.npy$") 
-    ex_pwc = re.compile(r"^(?P<nets>.*?)_ens_test_outputs_co_(?P<comb_m>.*?)_cp_(?P<coup_m>.*?)_prec_(?P<prec>.*?)_topl_(?P<topl>\d*).npy$")
-    ex_cal = re.compile(r"^(?P<nets>.*?)_ens_test_outputs_cal_(?P<cal_m>.*?)_prec_(?P<prec>.*?).npy$")
+    ex_pwc = re.compile(r"^(?P<nets>.*?)_ens_test_outputs_short_co_(?P<comb_m>.*?)_cp_(?P<coup_m>.*?)_prec_(?P<prec>.*?)_topl_(?P<topl>\d*).npz$")
+    ex_cal = re.compile(r"^(?P<nets>.*?)_ens_test_outputs_short_cal_(?P<cal_m>.*?)_prec_(?P<prec>.*?).npz$")
     
     for cor_fold in CORRUPT_FOLDERS:
+        if args.verbose > 0:
+            print(f"Processing folder {cor_fold}")
         for cor_lev in range(1, CORRUPT_LEVELS + 1):
-            cur_fold = os.path.join(args.testing_root, cor_fold, cor_lev)
+            if args.verbose > 0:
+                print(f"Processing corruption level {cor_lev}")
+            cur_fold = os.path.join(args.testing_root, cor_fold, str(cor_lev))
             cur_f_list = os.listdir(cur_fold) if os.path.exists(cur_fold) else []
             labels = load_npy_arr(os.path.join(cur_fold, "labels.npy"), device=args.device, dtype=torch.int32)
             
             net_output_fs = [mtch for mtch in map(ex_net.match, cur_f_list) if mtch is not None]
+            if args.verbose > 1:
+                print(f"Networks found {net_output_fs}")
             for net_out_f in net_output_fs:
                 error = compute_error(folder=cur_fold, match=net_out_f, labels=labels)
                 row = pd.DataFrame(
@@ -78,11 +90,14 @@ def compute_absolute_CE(args_dict=None):
                         "corruption_type": cor_fold,
                         "corruption_level": cor_lev,
                         "corruption_error": error
-                    }
+                    },
+                    index=[0]
                 )
                 net_df = pd.concat([net_df, row], ignore_index=True)
                 
             pwc_output_fs = [mtch for mtch in map(ex_pwc.match, cur_f_list) if mtch is not None]
+            if args.verbose > 1:
+                print(f"Ensembles pwc found {pwc_output_fs}")
             for pwc_out_f in pwc_output_fs:
                 error = compute_error(folder=cur_fold, match=pwc_out_f, labels=labels)
                 sorted_nets = '+'.join(sorted(pwc_out_f['nets'].split('+')))
@@ -97,11 +112,14 @@ def compute_absolute_CE(args_dict=None):
                         "corruption_type": cor_fold,
                         "corruption_level": cor_lev,
                         "corruption_error": error
-                    }
+                    },
+                    index=[0]
                 )
                 pwc_df = pd.concat([pwc_df, row], ignore_index=True)
                 
             cal_output_fs = [mtch for mtch in map(ex_cal.match, cur_f_list) if mtch is not None]
+            if args.verbose > 1:
+                print(f"Ensembles cal found {cal_output_fs}")
             for cal_out_f in cal_output_fs:
                 error = compute_error(folder=cur_fold, match=cal_out_f, labels=labels)
                 sorted_nets = '+'.join(sorted(cal_out_f['nets'].split('+')))
@@ -114,7 +132,8 @@ def compute_absolute_CE(args_dict=None):
                         "corruption_type": cor_fold,
                         "corruption_level": cor_lev,
                         "corruption_error": error
-                    }
+                    },
+                    index=[0]
                 )
                 cal_df = pd.concat([cal_df, row], ignore_index=True)
             
