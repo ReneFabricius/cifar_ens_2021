@@ -190,9 +190,22 @@ class ComputationPlanPWC(ComputationPlan):
                 self.save_model(outputs_folder=outputs_folder, model=wle, nets=nets_string,
                                 method=comb_m, comp_prec=comp_precision, verbose=verbose)
             else:
-               wle.load(os.path.join(outputs_folder, model_file))
-               if hasattr(wle, "constituent_names_") and wle.constituent_names_ is not None:
-                   assert wle.constituent_names_ == cur_networks
+                wle.load(os.path.join(outputs_folder, model_file))
+                if hasattr(wle, "constituent_names_") and wle.constituent_names_ is not None:
+                    assert sorted(wle.constituent_names_) == sorted(cur_networks)
+                    if wle.constituent_names_ != cur_networks:
+                        permutation = [cur_networks.index(nn) for nn in wle.constituent_names_]
+                        reord_nets = np.array(cur_networks)[permutation].tolist()
+                        print(f"Info: reordering constituents\n" +
+                              f"Model order: {wle.constituent_names_}\n" +
+                              f"Provided order: {cur_networks}\n" +
+                              f"Reordered order: {reord_nets}")
+                        val_pred = val_pred[permutation]
+                        test_pred = test_pred[permutation]
+                        if ood_pred is not None:
+                            ood_pred = ood_pred[permutation]
+                else:
+                    print("Warning: loaded model without specified order of constituents")
             
             coup_methods = self.plan_[(self.plan_["combination_id"] == comb_id) &
                                       (self.plan_["computational_precision"] == comp_precision) &
@@ -220,7 +233,7 @@ class ComputationPlanPWC(ComputationPlan):
                         elif topl < 1000:
                             start_bsz = 1600
                         else:
-                            start_bsz = 5
+                            start_bsz = 1
                     else:
                         start_bsz = test_pred.shape[1]
                     ens_ret, (time_full, time_successful) = cuda_mem_try(
